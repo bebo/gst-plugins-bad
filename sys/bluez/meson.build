@@ -6,13 +6,13 @@ bluez_sources = [
   'gstavdtputil.c',
   'gstavrcputil.c',
 ]
-
 bluez_dep = dependency('bluez', version : '>= 5.0', required : get_option('bluez'))
-gio_unix_dep = dependency('gio-unix-2.0', version : glib_req,
-                          fallback: ['glib', 'libgiounix_dep'],
-                          required : get_option('bluez'))
+#gio_unix_dep = dependency('gio-unix-2.0', version : '>= 2.40.0',
+#                          fallback: ['glib', 'libgiounix_dep'],
+#                          required : get_option('bluez'))
 
-if bluez_dep.found() and gio_unix_dep.found()
+#if bluez_dep.found() and gio_unix_dep.found()
+if bluez_dep.found() 
   bluez_ch = gnome.gdbus_codegen('bluez',
       sources : 'org.bluez.xml',
       interface_prefix : 'org.bluez',
@@ -28,3 +28,4 @@ if bluez_dep.found() and gio_unix_dep.found()
   )
   pkgconfig.generate(gstbluez, install_dir : plugins_pkgconfig_install_dir)
 endif
+
