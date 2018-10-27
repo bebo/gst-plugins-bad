@@ -46,6 +46,12 @@ struct _GstWasapiSrc
   guint64 client_clock_freq;
   IAudioCaptureClient *capture_client;
   HANDLE event_handle;
+
+  gsize overflow_buffer_size;
+  guint overflow_buffer_ptr;
+  guint overflow_buffer_length;
+  guint8 *overflow_buffer;
+
   /* Client was reset, so it needs to be started again */
   gboolean client_needs_restart;
 
