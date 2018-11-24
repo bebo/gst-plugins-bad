@@ -32,28 +32,10 @@
 #include <gst/gl/gstglfuncs.h>
 #include "gstcudaloader.h"
 #include "gstcuvidloader.h"
+#include "gstcudacontext.h"
 #include <cudaGL.h>
 
 G_BEGIN_DECLS
-
-typedef struct _GstNvDecCudaContext GstNvDecCudaContext;
-typedef struct _GstNvDecCudaContextClass GstNvDecCudaContextClass;
-
-struct _GstNvDecCudaContext
-{
-  GObject parent;
-
-  CUcontext context;
-  CUvideoctxlock lock;
-};
-
-struct _GstNvDecCudaContextClass
-{
-  GObjectClass parent_class;
-};
-
-GType gst_nvdec_cuda_context_get_type (void);
-
 
 #define GST_TYPE_NVDEC          (gst_nvdec_get_type())
 #define GST_NVDEC(obj)          (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_NVDEC, GstNvDec))
@@ -72,7 +54,7 @@ struct _GstNvDec
   GstGLContext *gl_context;
   GstGLContext *other_gl_context;
 
-  GstNvDecCudaContext *cuda_context;
+  GstCudaContext *cuda_context;
   CUvideoparser parser;
   CUvideodecoder decoder;
   GAsyncQueue *decode_queue;

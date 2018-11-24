@@ -30,6 +30,7 @@
 #endif
 
 #include "gstnvdec.h"
+#include "gstcudautils.h"
 
 typedef enum
 {
@@ -47,73 +48,10 @@ typedef struct _GstNvDecQueueItem
 GST_DEBUG_CATEGORY_STATIC (gst_nvdec_debug_category);
 #define GST_CAT_DEFAULT gst_nvdec_debug_category
 
-static inline gboolean
-cuda_OK (CUresult result)
-{
-  const gchar *error_name, *error_text;
-
-  if (result != CUDA_SUCCESS) {
-    CuGetErrorName (result, &error_name);
-    CuGetErrorString (result, &error_text);
-    GST_WARNING ("CUDA call failed: %s, %s", error_name, error_text);
-    return FALSE;
-  }
-
-  return TRUE;
-}
-
-G_DEFINE_TYPE (GstNvDecCudaContext, gst_nvdec_cuda_context, G_TYPE_OBJECT);
-
-static void
-gst_nvdec_cuda_context_finalize (GObject * object)
-{
-  GstNvDecCudaContext *self = (GstNvDecCudaContext *) object;
-
-  if (self->lock) {
-    GST_DEBUG ("destroying CUDA context lock");
-    if (cuda_OK (CuvidCtxLockDestroy (self->lock)))
-      self->lock = NULL;
-    else
-      GST_ERROR ("failed to destroy CUDA context lock");
-  }
-
-  if (self->context) {
-    GST_DEBUG ("destroying CUDA context");
-    if (cuda_OK (CuCtxDestroy (self->context)))
-      self->context = NULL;
-    else
-      GST_ERROR ("failed to destroy CUDA context");
-  }
-
-  G_OBJECT_CLASS (gst_nvdec_cuda_context_parent_class)->finalize (object);
-}
-
-static void
-gst_nvdec_cuda_context_class_init (GstNvDecCudaContextClass * klass)
-{
-  G_OBJECT_CLASS (klass)->finalize = gst_nvdec_cuda_context_finalize;
-}
-
-static void
-gst_nvdec_cuda_context_init (GstNvDecCudaContext * self)
-{
-  if (!cuda_OK (CuInit (0)))
-    GST_ERROR ("failed to init CUDA");
-
-  if (!cuda_OK (CuCtxCreate (&self->context, CU_CTX_SCHED_AUTO, 0)))
-    GST_ERROR ("failed to create CUDA context");
-
-  if (!cuda_OK (CuCtxPopCurrent (NULL)))
-    GST_ERROR ("failed to pop current CUDA context");
-
-  if (!cuda_OK (CuvidCtxLockCreate (&self->lock, self->context)))
-    GST_ERROR ("failed to create CUDA context lock");
-}
-
 typedef struct _GstNvDecCudaGraphicsResourceInfo
 {
   GstGLContext *gl_context;
-  GstNvDecCudaContext *cuda_context;
+  GstCudaContext *cuda_context;
   CUgraphicsResource resource;
 } GstNvDecCudaGraphicsResourceInfo;
 
@@ -125,22 +63,24 @@ register_cuda_resource (GstGLContext * context, gpointer * args)
       (GstNvDecCudaGraphicsResourceInfo *) args[1];
   GstMapInfo map_info = GST_MAP_INFO_INIT;
   guint texture_id;
+  GstCudaContext *ctx = cgr_info->cuda_context;
 
-  if (!cuda_OK (CuvidCtxLock (cgr_info->cuda_context->lock, 0)))
+  if (!gst_cuda_context_push (ctx))
     GST_WARNING ("failed to lock CUDA context");
 
   if (gst_memory_map (mem, &map_info, GST_MAP_READ | GST_MAP_GL)) {
     texture_id = *(guint *) map_info.data;
 
-    if (!cuda_OK (CuGraphicsGLRegisterImage (&cgr_info->resource, texture_id,
-                GL_TEXTURE_2D, CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD)))
+    if (!gst_cuda_result (CuGraphicsGLRegisterImage (&cgr_info->resource,
+                texture_id, GL_TEXTURE_2D,
+                CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD)))
       GST_WARNING ("failed to register texture with CUDA");
 
     gst_memory_unmap (mem, &map_info);
   } else
     GST_WARNING ("failed to map memory");
 
-  if (!cuda_OK (CuvidCtxUnlock (cgr_info->cuda_context->lock, 0)))
+  if (!gst_cuda_context_pop ())
     GST_WARNING ("failed to unlock CUDA context");
 }
 
@@ -148,14 +88,16 @@ static void
 unregister_cuda_resource (GstGLContext * context,
     GstNvDecCudaGraphicsResourceInfo * cgr_info)
 {
-  if (!cuda_OK (CuvidCtxLock (cgr_info->cuda_context->lock, 0)))
+  GstCudaContext *ctx = cgr_info->cuda_context;
+
+  if (!gst_cuda_context_push (ctx))
     GST_WARNING ("failed to lock CUDA context");
 
-  if (!cuda_OK (CuGraphicsUnregisterResource ((const CUgraphicsResource)
+  if (!gst_cuda_result (CuGraphicsUnregisterResource ((const CUgraphicsResource)
               cgr_info->resource)))
     GST_WARNING ("failed to unregister resource");
 
-  if (!cuda_OK (CuvidCtxUnlock (cgr_info->cuda_context->lock, 0)))
+  if (!gst_cuda_context_pop ())
     GST_WARNING ("failed to unlock CUDA context");
 }
 
@@ -170,8 +112,7 @@ free_cgr_info (GstNvDecCudaGraphicsResourceInfo * cgr_info)
 }
 
 static CUgraphicsResource
-ensure_cuda_graphics_resource (GstMemory * mem,
-    GstNvDecCudaContext * cuda_context)
+ensure_cuda_graphics_resource (GstMemory * mem, GstCudaContext * cuda_context)
 {
   static GQuark quark = 0;
   GstNvDecCudaGraphicsResourceInfo *cgr_info;
@@ -202,8 +143,10 @@ ensure_cuda_graphics_resource (GstMemory * mem,
   return cgr_info->resource;
 }
 
+static gboolean gst_nvdec_open (GstVideoDecoder * decoder);
 static gboolean gst_nvdec_start (GstVideoDecoder * decoder);
 static gboolean gst_nvdec_stop (GstVideoDecoder * decoder);
+static gboolean gst_nvdec_close (GstVideoDecoder * decoder);
 static gboolean gst_nvdec_set_format (GstVideoDecoder * decoder,
     GstVideoCodecState * state);
 static GstFlowReturn gst_nvdec_handle_frame (GstVideoDecoder * decoder,
@@ -251,8 +194,10 @@ gst_nvdec_class_init (GstNvDecClass * klass)
       "Codec/Decoder/Video/Hardware", "NVDEC video decoder",
       "Ericsson AB, http://www.ericsson.com");
 
+  video_decoder_class->open = GST_DEBUG_FUNCPTR (gst_nvdec_open);
   video_decoder_class->start = GST_DEBUG_FUNCPTR (gst_nvdec_start);
   video_decoder_class->stop = GST_DEBUG_FUNCPTR (gst_nvdec_stop);
+  video_decoder_class->close = GST_DEBUG_FUNCPTR (gst_nvdec_close);
   video_decoder_class->set_format = GST_DEBUG_FUNCPTR (gst_nvdec_set_format);
   video_decoder_class->handle_frame =
       GST_DEBUG_FUNCPTR (gst_nvdec_handle_frame);
@@ -279,20 +224,21 @@ parser_sequence_callback (GstNvDec * nvdec, CUVIDEOFORMAT * format)
   guint width, height;
   CUVIDDECODECREATEINFO create_info = { 0, };
   gboolean ret = TRUE;
+  GstCudaContext *ctx = nvdec->cuda_context;
 
   width = format->display_area.right - format->display_area.left;
   height = format->display_area.bottom - format->display_area.top;
   GST_DEBUG_OBJECT (nvdec, "width: %u, height: %u", width, height);
 
   if (!nvdec->decoder || (nvdec->width != width || nvdec->height != height)) {
-    if (!cuda_OK (CuvidCtxLock (nvdec->cuda_context->lock, 0))) {
+    if (!gst_cuda_context_push (ctx)) {
       GST_ERROR_OBJECT (nvdec, "failed to lock CUDA context");
       return FALSE;
     }
 
     if (nvdec->decoder) {
       GST_DEBUG_OBJECT (nvdec, "destroying decoder");
-      if (!cuda_OK (CuvidDestroyDecoder (nvdec->decoder))) {
+      if (!gst_cuda_result (CuvidDestroyDecoder (nvdec->decoder))) {
         GST_ERROR_OBJECT (nvdec, "failed to destroy decoder");
         ret = FALSE;
       } else
@@ -315,19 +261,19 @@ parser_sequence_callback (GstNvDec * nvdec, CUVIDEOFORMAT * format)
     create_info.ulTargetWidth = width;
     create_info.ulTargetHeight = height;
     create_info.ulNumOutputSurfaces = 1;
-    create_info.vidLock = nvdec->cuda_context->lock;
     create_info.target_rect.left = 0;
     create_info.target_rect.top = 0;
     create_info.target_rect.right = width;
     create_info.target_rect.bottom = height;
 
     if (nvdec->decoder
-        || !cuda_OK (CuvidCreateDecoder (&nvdec->decoder, &create_info))) {
+        || !gst_cuda_result (CuvidCreateDecoder (&nvdec->decoder,
+                &create_info))) {
       GST_ERROR_OBJECT (nvdec, "failed to create decoder");
       ret = FALSE;
     }
 
-    if (!cuda_OK (CuvidCtxUnlock (nvdec->cuda_context->lock, 0))) {
+    if (!gst_cuda_context_pop ()) {
       GST_ERROR_OBJECT (nvdec, "failed to unlock CUDA context");
       ret = FALSE;
     }
@@ -345,16 +291,17 @@ static gboolean
 parser_decode_callback (GstNvDec * nvdec, CUVIDPICPARAMS * params)
 {
   GstNvDecQueueItem *item;
+  GstCudaContext *ctx = nvdec->cuda_context;
 
   GST_LOG_OBJECT (nvdec, "picture index: %u", params->CurrPicIdx);
 
-  if (!cuda_OK (CuvidCtxLock (nvdec->cuda_context->lock, 0)))
+  if (!gst_cuda_context_push (ctx))
     GST_WARNING_OBJECT (nvdec, "failed to lock CUDA context");
 
-  if (!cuda_OK (CuvidDecodePicture (nvdec->decoder, params)))
+  if (!gst_cuda_result (CuvidDecodePicture (nvdec->decoder, params)))
     GST_WARNING_OBJECT (nvdec, "failed to decode picture");
 
-  if (!cuda_OK (CuvidCtxUnlock (nvdec->cuda_context->lock, 0)))
+  if (!gst_cuda_context_pop ())
     GST_WARNING_OBJECT (nvdec, "failed to unlock CUDA context");
 
   item = g_slice_new (GstNvDecQueueItem);
@@ -383,18 +330,33 @@ parser_display_callback (GstNvDec * nvdec, CUVIDPARSERDISPINFO * dispinfo)
 }
 
 static gboolean
+gst_nvdec_open (GstVideoDecoder * decoder)
+{
+  GstNvDec *nvdec = GST_NVDEC (decoder);
+
+  GST_DEBUG_OBJECT (nvdec, "open");
+
+  /* FIXME: set device id */
+  if (!gst_cuda_ensure_element_context (GST_ELEMENT_CAST (decoder),
+          &nvdec->cuda_context, 0)) {
+    GST_ERROR_OBJECT (nvdec, "failed to create CUDA context");
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+static gboolean
 gst_nvdec_start (GstVideoDecoder * decoder)
 {
   GstNvDec *nvdec = GST_NVDEC (decoder);
 
-  GST_DEBUG_OBJECT (nvdec, "creating CUDA context");
-  nvdec->cuda_context = g_object_new (gst_nvdec_cuda_context_get_type (), NULL);
-  nvdec->decode_queue = g_async_queue_new ();
-
-  if (!nvdec->cuda_context->context || !nvdec->cuda_context->lock) {
-    GST_ERROR_OBJECT (nvdec, "failed to create CUDA context or lock");
+  if (!nvdec->cuda_context) {
+    GST_ERROR_OBJECT (nvdec, "No available CUDA context");
     return FALSE;
   }
+
+  nvdec->decode_queue = g_async_queue_new ();
 
   return TRUE;
 }
@@ -404,28 +366,28 @@ maybe_destroy_decoder_and_parser (GstNvDec * nvdec)
 {
   gboolean ret = TRUE;
 
-  if (!cuda_OK (CuvidCtxLock (nvdec->cuda_context->lock, 0))) {
+  if (!gst_cuda_context_push (nvdec->cuda_context)) {
     GST_ERROR_OBJECT (nvdec, "failed to lock CUDA context");
     return FALSE;
   }
 
   if (nvdec->decoder) {
     GST_DEBUG_OBJECT (nvdec, "destroying decoder");
-    ret = cuda_OK (CuvidDestroyDecoder (nvdec->decoder));
+    ret = gst_cuda_result (CuvidDestroyDecoder (nvdec->decoder));
     if (ret)
       nvdec->decoder = NULL;
     else
       GST_ERROR_OBJECT (nvdec, "failed to destroy decoder");
   }
 
-  if (!cuda_OK (CuvidCtxUnlock (nvdec->cuda_context->lock, 0))) {
+  if (!gst_cuda_context_pop ()) {
     GST_ERROR_OBJECT (nvdec, "failed to unlock CUDA context");
     return FALSE;
   }
 
   if (nvdec->parser) {
     GST_DEBUG_OBJECT (nvdec, "destroying parser");
-    if (!cuda_OK (CuvidDestroyVideoParser (nvdec->parser))) {
+    if (!gst_cuda_result (CuvidDestroyVideoParser (nvdec->parser))) {
       GST_ERROR_OBJECT (nvdec, "failed to destroy parser");
       return FALSE;
     }
@@ -483,6 +445,18 @@ gst_nvdec_stop (GstVideoDecoder * decoder)
     g_async_queue_unref (nvdec->decode_queue);
     nvdec->decode_queue = NULL;
   }
+
+  return TRUE;
+}
+
+static gboolean
+gst_nvdec_close (GstVideoDecoder * decoder)
+{
+  GstNvDec *nvdec = GST_NVDEC (decoder);
+
+  GST_DEBUG_OBJECT (nvdec, "close");
+
+  gst_clear_object (&nvdec->cuda_context);
 
   return TRUE;
 }
@@ -556,7 +530,8 @@ gst_nvdec_set_format (GstVideoDecoder * decoder, GstVideoCodecState * state)
       (PFNVIDDISPLAYCALLBACK) parser_display_callback;
 
   GST_DEBUG_OBJECT (nvdec, "creating parser");
-  if (!cuda_OK (CuvidCreateVideoParser (&nvdec->parser, &parser_params))) {
+  if (!gst_cuda_result (CuvidCreateVideoParser (&nvdec->parser,
+              &parser_params))) {
     GST_ERROR_OBJECT (nvdec, "failed to create parser");
     return FALSE;
   }
@@ -583,18 +558,19 @@ copy_video_frame_to_gl_textures (GstGLContext * context, gpointer * args)
   proc_params.top_field_first = dispinfo->top_field_first;
   proc_params.unpaired_field = dispinfo->repeat_first_field == -1;
 
-  if (!cuda_OK (CuvidCtxLock (nvdec->cuda_context->lock, 0))) {
+  if (!gst_cuda_context_push (nvdec->cuda_context)) {
     GST_WARNING_OBJECT (nvdec, "failed to lock CUDA context");
     return;
   }
 
-  if (!cuda_OK (CuvidMapVideoFrame (nvdec->decoder, dispinfo->picture_index,
-              &dptr, &pitch, &proc_params))) {
+  if (!gst_cuda_result (CuvidMapVideoFrame (nvdec->decoder,
+              dispinfo->picture_index, &dptr, &pitch, &proc_params))) {
     GST_WARNING_OBJECT (nvdec, "failed to map CUDA video frame");
     goto unlock_cuda_context;
   }
 
-  if (!cuda_OK (CuGraphicsMapResources (num_resources, resources, NULL))) {
+  if (!gst_cuda_result (CuGraphicsMapResources (num_resources, resources,
+              NULL))) {
     GST_WARNING_OBJECT (nvdec, "failed to map CUDA resources");
     goto unmap_video_frame;
   }
@@ -606,8 +582,8 @@ copy_video_frame_to_gl_textures (GstGLContext * context, gpointer * args)
   mcpy2d.WidthInBytes = nvdec->width;
 
   for (i = 0; i < num_resources; i++) {
-    if (!cuda_OK (CuGraphicsSubResourceGetMappedArray (&array, resources[i], 0,
-                0))) {
+    if (!gst_cuda_result (CuGraphicsSubResourceGetMappedArray (&array,
+                resources[i], 0, 0))) {
       GST_WARNING_OBJECT (nvdec, "failed to map CUDA array");
       break;
     }
@@ -616,19 +592,20 @@ copy_video_frame_to_gl_textures (GstGLContext * context, gpointer * args)
     mcpy2d.dstArray = array;
     mcpy2d.Height = nvdec->height / (i + 1);
 
-    if (!cuda_OK (CuMemcpy2D (&mcpy2d)))
+    if (!gst_cuda_result (CuMemcpy2D (&mcpy2d)))
       GST_WARNING_OBJECT (nvdec, "memcpy to mapped array failed");
   }
 
-  if (!cuda_OK (CuGraphicsUnmapResources (num_resources, resources, NULL)))
+  if (!gst_cuda_result (CuGraphicsUnmapResources (num_resources, resources,
+              NULL)))
     GST_WARNING_OBJECT (nvdec, "failed to unmap CUDA resources");
 
 unmap_video_frame:
-  if (!cuda_OK (CuvidUnmapVideoFrame (nvdec->decoder, dptr)))
+  if (!gst_cuda_result (CuvidUnmapVideoFrame (nvdec->decoder, dptr)))
     GST_WARNING_OBJECT (nvdec, "failed to unmap CUDA video frame");
 
 unlock_cuda_context:
-  if (!cuda_OK (CuvidCtxUnlock (nvdec->cuda_context->lock, 0)))
+  if (!gst_cuda_context_pop ())
     GST_WARNING_OBJECT (nvdec, "failed to unlock CUDA context");
 }
 
@@ -963,7 +940,7 @@ gst_nvdec_handle_frame (GstVideoDecoder * decoder, GstVideoCodecFrame * frame)
   if (GST_BUFFER_IS_DISCONT (frame->input_buffer))
     packet.flags |= CUVID_PKT_DISCONTINUITY;
 
-  if (!cuda_OK (CuvidParseVideoData (nvdec->parser, &packet)))
+  if (!gst_cuda_result (CuvidParseVideoData (nvdec->parser, &packet)))
     GST_WARNING_OBJECT (nvdec, "parser failed");
 
   gst_buffer_unmap (frame->input_buffer, &map_info);
@@ -984,7 +961,7 @@ gst_nvdec_flush (GstVideoDecoder * decoder)
   packet.payload = NULL;
   packet.flags = CUVID_PKT_ENDOFSTREAM;
 
-  if (!cuda_OK (CuvidParseVideoData (nvdec->parser, &packet)))
+  if (!gst_cuda_result (CuvidParseVideoData (nvdec->parser, &packet)))
     GST_WARNING_OBJECT (nvdec, "parser failed");
 
   handle_pending_frames (nvdec);
@@ -1004,7 +981,7 @@ gst_nvdec_drain (GstVideoDecoder * decoder)
   packet.payload = NULL;
   packet.flags = CUVID_PKT_ENDOFSTREAM;
 
-  if (!cuda_OK (CuvidParseVideoData (nvdec->parser, &packet)))
+  if (!gst_cuda_result (CuvidParseVideoData (nvdec->parser, &packet)))
     GST_WARNING_OBJECT (nvdec, "parser failed");
 
   return handle_pending_frames (nvdec);
@@ -1095,6 +1072,9 @@ gst_nvdec_src_query (GstVideoDecoder * decoder, GstQuery * query)
       if (gst_gl_handle_context_query (GST_ELEMENT (decoder), query,
               nvdec->gl_display, nvdec->gl_context, nvdec->other_gl_context))
         return TRUE;
+      else if (gst_cuda_handle_context_query (GST_ELEMENT (decoder),
+              query, nvdec->cuda_context))
+        return TRUE;
       break;
     default:
       break;
@@ -1108,10 +1088,17 @@ static void
 gst_nvdec_set_context (GstElement * element, GstContext * context)
 {
   GstNvDec *nvdec = GST_NVDEC (element);
-  GST_DEBUG_OBJECT (nvdec, "set context");
+  GST_DEBUG_OBJECT (nvdec, "set context %s",
+      gst_context_get_context_type (context));
+
+  /* FIXME: Add device-id */
+  if (gst_cuda_handle_set_context (element, context, &nvdec->cuda_context, 0)) {
+    goto done;
+  }
 
   gst_gl_handle_set_context (element, context, &nvdec->gl_display,
       &nvdec->other_gl_context);
 
+done:
   GST_ELEMENT_CLASS (gst_nvdec_parent_class)->set_context (element, context);
 }
