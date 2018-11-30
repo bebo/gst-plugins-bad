@@ -45,7 +45,10 @@ CUresult CuGraphicsUnregisterResource (CUgraphicsResource resource);
 CUresult CuMemAlloc (CUdeviceptr *dptr, unsigned int bytesize);
 CUresult CuMemAllocPitch (CUdeviceptr *dptr, size_t *pPitch, size_t WidthInBytes, size_t Height, unsigned int ElementSizeBytes);
 CUresult CuMemcpy2D (const CUDA_MEMCPY2D *pCopy);
+CUresult CuMemcpy2DAsync (const CUDA_MEMCPY2D *pCopy, CUstream hStream);
 CUresult CuMemFree (CUdeviceptr dptr);
+
+CUresult CuStreamSynchronize (CUstream hStream);
 
 CUresult CuDeviceGet (CUdevice *device, int ordinal);
 CUresult CuDeviceGetCount (int *count);

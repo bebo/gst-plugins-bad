@@ -50,6 +50,7 @@ struct _GstNvDec
 {
   GstVideoDecoder parent;
 
+  gboolean use_gl;
   GstGLDisplay *gl_display;
   GstGLContext *gl_context;
   GstGLContext *other_gl_context;
