@@ -466,17 +466,34 @@ parser_decode_callback (GstNvDec * nvdec, CUVIDPICPARAMS * params)
     GST_WARNING_OBJECT (nvdec, "failed to unlock CUDA context");
 
   pending_frames = gst_video_decoder_get_frames (GST_VIDEO_DECODER (nvdec));
+
+  /* HACK: this decode callback could be invoked multiple times for
+   * one cuvidParseVideoData() call. Most likely it can be related to "decode only"
+   * frame of VPX codec but no document available.
+   * In that case, the last decoded frame seems to be displayed */
   for (iter = pending_frames; iter; iter = g_list_next (iter)) {
     guint id;
     GstVideoCodecFrame *frame = (GstVideoCodecFrame *) iter->data;
+    gboolean set_data = FALSE;
 
     id = GPOINTER_TO_UINT (gst_video_codec_frame_get_user_data (frame));
-    if (!id) {
+    if (G_UNLIKELY (nvdec->state == GST_NVDEC_STATE_DECODE)) {
+      if (id) {
+        GST_LOG_OBJECT (nvdec, "reset the last user data");
+        set_data = TRUE;
+      }
+    } else if (!id) {
+      set_data = TRUE;
+    }
+
+    if (set_data) {
       gst_video_codec_frame_set_user_data (frame,
           GUINT_TO_POINTER (params->CurrPicIdx + 1), NULL);
       break;
     }
   }
+
+  nvdec->state = GST_NVDEC_STATE_DECODE;
 
   g_list_free_full (pending_frames,
       (GDestroyNotify) gst_video_codec_frame_unref);
@@ -601,8 +618,12 @@ parser_display_callback (GstNvDec * nvdec, CUVIDPARSERDISPINFO * dispinfo)
   if (G_UNLIKELY (frame == NULL)) {
     GST_WARNING_OBJECT (nvdec, "no frame for picture index %u",
         dispinfo->picture_index);
-    return TRUE;
+    frame = g_slice_new0 (GstVideoCodecFrame);
+    frame->ref_count = 1;
   }
+
+  /* let's believe decoder's pts */
+  frame->pts = dispinfo->timestamp;
 
   ret = gst_video_decoder_allocate_output_frame (GST_VIDEO_DECODER (nvdec),
       frame);
@@ -689,6 +710,7 @@ gst_nvdec_start (GstVideoDecoder * decoder)
 {
   GstNvDec *nvdec = GST_NVDEC (decoder);
 
+  nvdec->state = GST_NVDEC_STATE_INIT;
   if (!nvdec->cuda_context) {
     GST_ERROR_OBJECT (nvdec, "No available CUDA context");
     return FALSE;
@@ -740,6 +762,7 @@ gst_nvdec_stop (GstVideoDecoder * decoder)
 
   GST_DEBUG_OBJECT (nvdec, "stop");
 
+  nvdec->state = GST_NVDEC_STATE_INIT;
   if (!maybe_destroy_decoder_and_parser (nvdec))
     return FALSE;
 
@@ -963,6 +986,8 @@ gst_nvdec_handle_frame (GstVideoDecoder * decoder, GstVideoCodecFrame * frame)
   if (GST_BUFFER_IS_DISCONT (frame->input_buffer))
     packet.flags |= CUVID_PKT_DISCONTINUITY;
 
+  nvdec->state = GST_NVDEC_STATE_PARSE;
+
   if (!gst_cuda_result (CuvidParseVideoData (nvdec->parser, &packet)))
     GST_WARNING_OBJECT (nvdec, "parser failed");
 
@@ -984,6 +1009,7 @@ gst_nvdec_flush (GstVideoDecoder * decoder)
   packet.payload = NULL;
   packet.flags = CUVID_PKT_ENDOFSTREAM;
 
+  nvdec->state = GST_NVDEC_STATE_PARSE;
   if (nvdec->parser &&
       !gst_cuda_result (CuvidParseVideoData (nvdec->parser, &packet))) {
     GST_WARNING_OBJECT (nvdec, "parser failed");
@@ -1006,6 +1032,7 @@ gst_nvdec_drain (GstVideoDecoder * decoder)
   packet.payload = NULL;
   packet.flags = CUVID_PKT_ENDOFSTREAM;
 
+  nvdec->state = GST_NVDEC_STATE_PARSE;
   if (nvdec->parser &&
       !gst_cuda_result (CuvidParseVideoData (nvdec->parser, &packet))) {
     GST_WARNING_OBJECT (nvdec, "parser failed");

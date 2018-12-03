@@ -46,6 +46,13 @@ G_BEGIN_DECLS
 typedef struct _GstNvDec GstNvDec;
 typedef struct _GstNvDecClass GstNvDecClass;
 
+typedef enum
+{
+  GST_NVDEC_STATE_INIT = 0,
+  GST_NVDEC_STATE_PARSE,
+  GST_NVDEC_STATE_DECODE,
+} GstNvDecState;
+
 struct _GstNvDec
 {
   GstVideoDecoder parent;
@@ -65,7 +72,7 @@ struct _GstNvDec
   guint fps_d;
   GstClockTime min_latency;
   GstVideoCodecState *input_state;
-
+  GstNvDecState state;
   GstFlowReturn last_ret;
 };
 
