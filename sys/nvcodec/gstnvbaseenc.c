@@ -695,7 +695,7 @@ _find_frame_with_output_buffer (GstNvBaseEnc * nvenc, NV_ENC_OUTPUT_PTR out_buf)
 
   for (l = walk; l; l = l->next) {
     GstVideoCodecFrame *frame = (GstVideoCodecFrame *) l->data;
-    NvBaseEncFrameState *state = frame->user_data;
+    NvBaseEncFrameState *state = gst_video_codec_frame_get_user_data (frame);
 
     if (!state)
       continue;
@@ -789,7 +789,7 @@ gst_nv_base_enc_bitstream_thread (gpointer user_data)
           g_assert (frame == tmp_frame);
         frame = tmp_frame;
 
-        state = frame->user_data;
+        state = gst_video_codec_frame_get_user_data (frame);
         g_assert (state->out_bufs[i] == out_buf);
 
         /* copy into output buffer */
@@ -1720,9 +1720,7 @@ gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
   if (input_buffer == NULL)
     goto error;
 
-  state = frame->user_data;
-  if (!state)
-    state = g_new0 (NvBaseEncFrameState, 1);
+  state = g_new0 (NvBaseEncFrameState, 1);
   state->n_buffers = 1;
 
 #if HAVE_NVENC_GST_GL
@@ -1768,8 +1766,7 @@ gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
     state->in_bufs[frame_n] = in_gl_resource;
     state->out_bufs[frame_n++] = out_buf;
 
-    frame->user_data = state;
-    frame->user_data_destroy_notify = (GDestroyNotify) g_free;
+    gst_video_codec_frame_set_user_data (frame, state, (GDestroyNotify) g_free);
 
     flow =
         _submit_input_buffer (nvenc, frame, &vframe, in_gl_resource,
@@ -1878,8 +1875,7 @@ gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
 
     state->in_bufs[frame_n] = in_buf;
     state->out_bufs[frame_n++] = out_buf;
-    frame->user_data = state;
-    frame->user_data_destroy_notify = (GDestroyNotify) g_free;
+    gst_video_codec_frame_set_user_data (frame, state, (GDestroyNotify) g_free);
 
     flow =
         _submit_input_buffer (nvenc, frame, &vframe, in_buf, in_buf,
