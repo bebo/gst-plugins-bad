@@ -73,7 +73,7 @@ typedef struct {
   gint            gop_size;
 
   GstCudaContext * cuda_ctx;
-  void          * encoder;
+  gpointer        encoder;
 
   /* the supported input formats */
   GValue        * input_formats;                  /* OBJECT LOCK */
@@ -103,8 +103,8 @@ typedef struct {
    * 0 = none, 1 = fields, 2 = interleaved */
   gint            interlace_modes;
 
-  void           *display;            /* GstGLDisplay */
-  void           *other_context;      /* GstGLContext */
+  gpointer        display;            /* GstGLDisplay */
+  gpointer        other_context;      /* GstGLContext */
 
   /* the maximum buffer size the encoder is configured for */
   guint               max_encode_width;

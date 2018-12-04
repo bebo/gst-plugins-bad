@@ -835,7 +835,7 @@ gst_nv_base_enc_bitstream_thread (gpointer user_data)
     }
 
     for (i = 0; i < state->n_buffers; i++) {
-      void *in_buf = state->in_bufs[i];
+      gpointer in_buf = state->in_bufs[i];
       g_assert (in_buf != NULL);
 
 #if HAVE_NVENC_GST_GL
@@ -1615,8 +1615,8 @@ _acquire_input_buffer (GstNvBaseEnc * nvenc, gpointer * input)
 
 static GstFlowReturn
 _submit_input_buffer (GstNvBaseEnc * nvenc, GstVideoCodecFrame * frame,
-    GstVideoFrame * vframe, void *inputBuffer, void *inputBufferPtr,
-    NV_ENC_BUFFER_FORMAT bufferFormat, void *outputBufferPtr)
+    GstVideoFrame * vframe, gpointer inputBuffer, gpointer inputBufferPtr,
+    NV_ENC_BUFFER_FORMAT bufferFormat, gpointer outputBufferPtr)
 {
   GstNvBaseEncClass *nvenc_class = GST_NV_BASE_ENC_GET_CLASS (nvenc);
   NV_ENC_PIC_PARAMS pic_params = { 0, };
