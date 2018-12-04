@@ -169,7 +169,7 @@ enum
 G_LOCK_DEFINE_STATIC (initialization_lock);
 
 #if HAVE_NVENC_GST_GL
-struct gl_input_resource
+typedef struct
 {
   GstGLMemory *gl_mem[GST_VIDEO_MAX_PLANES];
   CUgraphicsResource cuda_texture;
@@ -183,15 +183,15 @@ struct gl_input_resource
   /* whether nv_mapped_resource was mapped via NvEncMapInputResource()
    * and therefore should unmap via NvEncUnmapInputResource or not */
   gboolean mapped;
-};
+} NvBaseEncGLResource;
 #endif
 
-struct frame_state
+typedef struct
 {
   gint n_buffers;
   gpointer in_bufs[N_BUFFERS_PER_FRAME];
   gpointer out_bufs[N_BUFFERS_PER_FRAME];
-};
+} NvBaseEncFrameState;
 
 static gboolean gst_nv_base_enc_open (GstVideoEncoder * enc);
 static gboolean gst_nv_base_enc_close (GstVideoEncoder * enc);
@@ -695,7 +695,7 @@ _find_frame_with_output_buffer (GstNvBaseEnc * nvenc, NV_ENC_OUTPUT_PTR out_buf)
 
   for (l = walk; l; l = l->next) {
     GstVideoCodecFrame *frame = (GstVideoCodecFrame *) l->data;
-    struct frame_state *state = frame->user_data;
+    NvBaseEncFrameState *state = frame->user_data;
 
     if (!state)
       continue;
@@ -737,7 +737,7 @@ gst_nv_base_enc_bitstream_thread (gpointer user_data)
    */
   do {
     GstBuffer *buffers[N_BUFFERS_PER_FRAME];
-    struct frame_state *state = NULL;
+    NvBaseEncFrameState *state = NULL;
     GstVideoCodecFrame *frame = NULL;
     NVENCSTATUS nv_ret;
     GstFlowReturn flow = GST_FLOW_OK;
@@ -840,7 +840,7 @@ gst_nv_base_enc_bitstream_thread (gpointer user_data)
 
 #if HAVE_NVENC_GST_GL
       if (nvenc->gl_input) {
-        struct gl_input_resource *in_gl_resource = in_buf;
+        NvBaseEncGLResource *in_gl_resource = in_buf;
 
         nv_ret =
             NvEncUnmapInputResource (nvenc->encoder,
@@ -978,7 +978,7 @@ gst_nv_base_enc_free_buffers (GstNvBaseEnc * nvenc)
 
 #if HAVE_NVENC_GST_GL
     if (nvenc->gl_input) {
-      struct gl_input_resource *in_gl_resource = nvenc->input_bufs[i];
+      NvBaseEncGLResource *in_gl_resource = nvenc->input_bufs[i];
 
       gst_cuda_context_push (nvenc->cuda_ctx);
 
@@ -1306,8 +1306,7 @@ gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
 
       gst_cuda_context_push (nvenc->cuda_ctx);
       for (i = 0; i < nvenc->n_bufs; ++i) {
-        struct gl_input_resource *in_gl_resource =
-            g_new0 (struct gl_input_resource, 1);
+        NvBaseEncGLResource *in_gl_resource = g_new0 (NvBaseEncGLResource, 1);
         CUresult cu_ret;
 
         memset (&in_gl_resource->nv_resource, 0,
@@ -1489,16 +1488,16 @@ _plane_get_n_components (GstVideoInfo * info, guint plane)
 }
 
 #if HAVE_NVENC_GST_GL
-struct map_gl_input
+typedef struct
 {
   GstNvBaseEnc *nvenc;
   GstVideoCodecFrame *frame;
   GstVideoInfo *info;
-  struct gl_input_resource *in_gl_resource;
-};
+  NvBaseEncGLResource *in_gl_resource;
+} NvBaseEncGLMap;
 
 static void
-_map_gl_input_buffer (GstGLContext * context, struct map_gl_input *data)
+_map_gl_input_buffer (GstGLContext * context, NvBaseEncGLMap * data)
 {
   guint8 *data_pointer;
   guint i;
@@ -1692,7 +1691,7 @@ gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
   GstVideoInfo *info = &nvenc->input_state->info;
   GstFlowReturn flow = GST_FLOW_OK;
   GstMapFlags in_map_flags = GST_MAP_READ;
-  struct frame_state *state = NULL;
+  NvBaseEncFrameState *state = NULL;
   guint frame_n = 0;
 
   g_assert (nvenc->encoder != NULL);
@@ -1723,13 +1722,13 @@ gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
 
   state = frame->user_data;
   if (!state)
-    state = g_new0 (struct frame_state, 1);
+    state = g_new0 (NvBaseEncFrameState, 1);
   state->n_buffers = 1;
 
 #if HAVE_NVENC_GST_GL
   if (nvenc->gl_input) {
-    struct gl_input_resource *in_gl_resource = input_buffer;
-    struct map_gl_input data;
+    NvBaseEncGLResource *in_gl_resource = input_buffer;
+    NvBaseEncGLMap data;
 
     GST_LOG_OBJECT (enc, "got input buffer %p", in_gl_resource);
 
