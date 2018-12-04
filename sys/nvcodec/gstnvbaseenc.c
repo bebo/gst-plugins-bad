@@ -1900,10 +1900,8 @@ out:
 
 error:
   flow = GST_FLOW_ERROR;
-  if (state)
-    g_free (state);
-  if (input_buffer)
-    g_free (input_buffer);
+  g_free (state);
+  g_free (input_buffer);
   goto out;
 }
 
