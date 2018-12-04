@@ -71,6 +71,10 @@ typedef struct {
   gint            qp_const;
   guint           bitrate;
   gint            gop_size;
+  guint           rc_lookahead;
+  gboolean        no_scenecut;
+  gboolean        b_adapt;
+  guint           bframes;
 
   GstCudaContext * cuda_ctx;
   gpointer        encoder;

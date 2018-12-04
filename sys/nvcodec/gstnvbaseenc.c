@@ -152,6 +152,10 @@ enum
   PROP_QP_MAX,
   PROP_QP_CONST,
   PROP_GOP_SIZE,
+  PROP_RC_LOOKAHEAD,
+  PROP_NO_SCENECUT,             /* consistent naming with x264 */
+  PROP_B_ADAPT,
+  PROP_BFRAMES,
 };
 
 #define DEFAULT_DEVICE_ID -1
@@ -162,6 +166,11 @@ enum
 #define DEFAULT_QP_MAX -1
 #define DEFAULT_QP_CONST -1
 #define DEFAULT_GOP_SIZE 75
+#define DEFAULT_RC_LOOKAHEAD 0
+/* default values of nvEncodeAPI.h */
+#define DEFAULT_NO_SCENECUT TRUE
+#define DEFAULT_B_ADAPT FALSE
+#define DEFAULT_BFRAMES 0
 
 /* This lock is needed to prevent the situation where multiple encoders are
  * initialised at the same time which appears to cause excessive CPU usage over
@@ -289,6 +298,26 @@ gst_nv_base_enc_class_init (GstNvBaseEncClass * klass)
           DEFAULT_BITRATE,
           G_PARAM_READWRITE | GST_PARAM_MUTABLE_PLAYING |
           G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_RC_LOOKAHEAD,
+      g_param_spec_uint ("rc-lookahead", "Rate Control Lookahead",
+          "Number of frames to look ahead for rate-control", 0, 32,
+          DEFAULT_RC_LOOKAHEAD, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_NO_SCENECUT,
+      g_param_spec_boolean ("no-scenecut", "No Scene Cut",
+          "Disable adaptive I-frame insertion at scene cuts "
+          "(only has an effect when rc_lookahead is non-zero)",
+          DEFAULT_NO_SCENECUT, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_B_ADAPT,
+      g_param_spec_boolean ("b-adapt", "B-Adapt",
+          "Adaptive B-frame decision "
+          "(only has an effect when rc_lookahead is non-zero)",
+          DEFAULT_B_ADAPT, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  /* NOTE: not sure upper bound of bframes, which is dependent on driver */
+  g_object_class_install_property (gobject_class, PROP_BFRAMES,
+      g_param_spec_uint ("bframes", "B-Frames",
+          "Number of B-frames between I and P "
+          "(upper bound is dependent on driver)",
+          0, 16, DEFAULT_BFRAMES, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 }
 
 static gboolean
@@ -675,6 +704,10 @@ gst_nv_base_enc_init (GstNvBaseEnc * nvenc)
   nvenc->qp_const = DEFAULT_QP_CONST;
   nvenc->bitrate = DEFAULT_BITRATE;
   nvenc->gop_size = DEFAULT_GOP_SIZE;
+  nvenc->rc_lookahead = DEFAULT_RC_LOOKAHEAD;
+  nvenc->no_scenecut = DEFAULT_NO_SCENECUT;
+  nvenc->b_adapt = DEFAULT_B_ADAPT;
+  nvenc->bframes = DEFAULT_BFRAMES;
 
   GST_VIDEO_ENCODER_STREAM_LOCK (encoder);
   GST_VIDEO_ENCODER_STREAM_UNLOCK (encoder);
@@ -1091,6 +1124,51 @@ gst_nv_base_enc_get_max_encode_size (GstNvBaseEnc * nvenc, guint * max_width,
   *max_height = nvenc->max_encode_height;
 }
 
+static void
+gst_nv_base_enc_setup_rate_control (GstNvBaseEnc * nvenc,
+    NV_ENC_INITIALIZE_PARAMS * params)
+{
+  params->encodeConfig->rcParams.rateControlMode =
+      _rc_mode_to_nv (nvenc->rate_control_mode);
+
+  if (nvenc->bitrate > 0) {
+    /* FIXME: this produces larger bitrates?! */
+    params->encodeConfig->rcParams.averageBitRate = nvenc->bitrate * 1024;
+    params->encodeConfig->rcParams.maxBitRate = nvenc->bitrate * 1024;
+  }
+
+  if (nvenc->qp_const > 0) {
+    params->encodeConfig->rcParams.constQP.qpInterB = nvenc->qp_const;
+    params->encodeConfig->rcParams.constQP.qpInterP = nvenc->qp_const;
+    params->encodeConfig->rcParams.constQP.qpIntra = nvenc->qp_const;
+  }
+
+  if (nvenc->qp_min >= 0) {
+    params->encodeConfig->rcParams.enableMinQP = 1;
+    params->encodeConfig->rcParams.minQP.qpInterB = nvenc->qp_min;
+    params->encodeConfig->rcParams.minQP.qpInterP = nvenc->qp_min;
+    params->encodeConfig->rcParams.minQP.qpIntra = nvenc->qp_min;
+  }
+
+  if (nvenc->qp_max >= 0) {
+    params->encodeConfig->rcParams.enableMaxQP = 1;
+    params->encodeConfig->rcParams.maxQP.qpInterB = nvenc->qp_max;
+    params->encodeConfig->rcParams.maxQP.qpInterP = nvenc->qp_max;
+    params->encodeConfig->rcParams.maxQP.qpIntra = nvenc->qp_max;
+  }
+
+  if (nvenc->rc_lookahead > 0) {
+    params->encodeConfig->rcParams.enableLookahead = 1;
+    params->encodeConfig->rcParams.lookaheadDepth = nvenc->rc_lookahead;
+    params->encodeConfig->rcParams.disableIadapt = nvenc->no_scenecut;
+    params->encodeConfig->rcParams.disableBadapt = !nvenc->b_adapt;
+    GST_DEBUG_OBJECT (nvenc,
+        "set rc_lookahead: %u, no-scenecut: %s, B-adapt: %s",
+        nvenc->rc_lookahead, nvenc->no_scenecut ? "true" : "false",
+        nvenc->b_adapt ? "true" : "false");
+  }
+}
+
 static gboolean
 gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
 {
@@ -1210,32 +1288,7 @@ gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
     GST_FIXME_OBJECT (nvenc, "variable framerate");
   }
 
-  if (nvenc->rate_control_mode != GST_NV_RC_MODE_DEFAULT) {
-    params->encodeConfig->rcParams.rateControlMode =
-        _rc_mode_to_nv (nvenc->rate_control_mode);
-    if (nvenc->bitrate > 0) {
-      /* FIXME: this produces larger bitrates?! */
-      params->encodeConfig->rcParams.averageBitRate = nvenc->bitrate * 1024;
-      params->encodeConfig->rcParams.maxBitRate = nvenc->bitrate * 1024;
-    }
-    if (nvenc->qp_const > 0) {
-      params->encodeConfig->rcParams.constQP.qpInterB = nvenc->qp_const;
-      params->encodeConfig->rcParams.constQP.qpInterP = nvenc->qp_const;
-      params->encodeConfig->rcParams.constQP.qpIntra = nvenc->qp_const;
-    }
-    if (nvenc->qp_min >= 0) {
-      params->encodeConfig->rcParams.enableMinQP = 1;
-      params->encodeConfig->rcParams.minQP.qpInterB = nvenc->qp_min;
-      params->encodeConfig->rcParams.minQP.qpInterP = nvenc->qp_min;
-      params->encodeConfig->rcParams.minQP.qpIntra = nvenc->qp_min;
-    }
-    if (nvenc->qp_max >= 0) {
-      params->encodeConfig->rcParams.enableMaxQP = 1;
-      params->encodeConfig->rcParams.maxQP.qpInterB = nvenc->qp_max;
-      params->encodeConfig->rcParams.maxQP.qpInterP = nvenc->qp_max;
-      params->encodeConfig->rcParams.maxQP.qpIntra = nvenc->qp_max;
-    }
-  }
+  gst_nv_base_enc_setup_rate_control (nvenc, params);
 
   if (nvenc->gop_size < 0) {
     params->encodeConfig->gopLength = NVENC_INFINITE_GOPLENGTH;
@@ -1998,6 +2051,22 @@ gst_nv_base_enc_set_property (GObject * object, guint prop_id,
       nvenc->gop_size = g_value_get_int (value);
       gst_nv_base_enc_schedule_reconfig (nvenc);
       break;
+    case PROP_RC_LOOKAHEAD:
+      nvenc->rc_lookahead = g_value_get_uint (value);
+      gst_nv_base_enc_schedule_reconfig (nvenc);
+      break;
+    case PROP_NO_SCENECUT:
+      nvenc->no_scenecut = g_value_get_boolean (value);
+      gst_nv_base_enc_schedule_reconfig (nvenc);
+      break;
+    case PROP_B_ADAPT:
+      nvenc->b_adapt = g_value_get_boolean (value);
+      gst_nv_base_enc_schedule_reconfig (nvenc);
+      break;
+    case PROP_BFRAMES:
+      nvenc->bframes = g_value_get_uint (value);
+      gst_nv_base_enc_schedule_reconfig (nvenc);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2034,6 +2103,18 @@ gst_nv_base_enc_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_GOP_SIZE:
       g_value_set_int (value, nvenc->gop_size);
+      break;
+    case PROP_RC_LOOKAHEAD:
+      g_value_set_uint (value, nvenc->rc_lookahead);
+      break;
+    case PROP_NO_SCENECUT:
+      g_value_set_boolean (value, nvenc->no_scenecut);
+      break;
+    case PROP_B_ADAPT:
+      g_value_set_boolean (value, nvenc->b_adapt);
+      break;
+    case PROP_BFRAMES:
+      g_value_set_uint (value, nvenc->bframes);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
