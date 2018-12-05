@@ -1169,6 +1169,33 @@ gst_nv_base_enc_setup_rate_control (GstNvBaseEnc * nvenc,
   }
 }
 
+/* following calculation references a NVIDIA's contribution to ffmpeg
+ * too large input pool size might waste GPU resources */
+static guint
+gst_nv_base_enc_calculate_num_input_buffer (GstNvBaseEnc * nvenc,
+    NV_ENC_INITIALIZE_PARAMS * params)
+{
+  guint num;
+
+  /* at least 4 buffers are required (ref. nvEncodeAPI.h)
+   * multiply by 2 for number of NVENCs on gpu (hardcode to 2)
+   * another multiply by 2 to avoid blocking next PBB group
+   */
+  num = MAX (4, params->encodeConfig->frameIntervalP * 2 * 2);
+
+  if (nvenc->rc_lookahead > 0) {
+    /* +1 is to account for lkd_bound calculation later
+     * +4 is to allow sufficient pipelining with lookahead
+     */
+    num = MAX (num, params->encodeConfig->frameIntervalP + 1 + 4);
+  }
+
+  /* hardcoded upper bound */
+  num = MIN (64, num);
+
+  return num;
+}
+
 static gboolean
 gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
 {
@@ -1293,7 +1320,16 @@ gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
   if (nvenc->gop_size < 0) {
     params->encodeConfig->gopLength = NVENC_INFINITE_GOPLENGTH;
     params->encodeConfig->frameIntervalP = 1;
-  } else if (nvenc->gop_size > 0) {
+  } else if (nvenc->gop_size == 0) {
+    /* zero means intra-only */
+    params->encodeConfig->gopLength = 1;
+    params->encodeConfig->frameIntervalP = 0;
+  } else {
+    /* frameIntervalP = 0: I, 1: IPP, 2: IBP, 3: IBBP ... */
+    if (nvenc->bframes > 0) {
+      params->encodeConfig->frameIntervalP = nvenc->bframes + 1;
+    }
+
     params->encodeConfig->gopLength = nvenc->gop_size;
   }
 
@@ -1333,17 +1369,14 @@ gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
 #if HAVE_NVENC_GST_GL
     GstCapsFeatures *features;
 #endif
-    guint num_macroblocks, i;
+    guint i;
     guint input_width, input_height;
 
     input_width = GST_VIDEO_INFO_WIDTH (info);
     input_height = GST_VIDEO_INFO_HEIGHT (info);
 
-    num_macroblocks = (GST_ROUND_UP_16 (input_width) >> 4)
-        * (GST_ROUND_UP_16 (input_height) >> 4);
-    nvenc->n_bufs = (num_macroblocks >= 8160) ? 32 : 48;
-
     /* input buffers */
+    nvenc->n_bufs = gst_nv_base_enc_calculate_num_input_buffer (nvenc, params);
     nvenc->input_bufs = g_new0 (gpointer, nvenc->n_bufs);
 
 #if HAVE_NVENC_GST_GL
