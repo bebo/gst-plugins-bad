@@ -57,7 +57,11 @@ static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE ("sink",
     /* TODO: add support Y444 */
     GST_STATIC_CAPS ("video/x-raw, " "format = (string) { NV12, YV12, I420 }, "
         "width = (int) [ 16, 4096 ], height = (int) [ 16, 2160 ], "
-        "framerate = (fraction) [0, MAX] "
+        "framerate = (fraction) [0, MAX] ;"
+        "video/x-raw(" GST_CAPS_FEATURE_MEMORY_CUDA_MEMORY "), "
+        "format = (string) { NV12, YV12, I420 }, "
+        "width = (int) [ 16, 4096 ], height = (int) [ 16, 2160 ], "
+        "framerate = (fraction) [0, MAX]"
         GL_CAPS_STR
     ));
 

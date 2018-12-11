@@ -58,7 +58,12 @@ static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_STATIC_CAPS ("video/x-raw, " "format = (string) { NV12, YV12, I420 }, "
         "width = (int) [ 16, 4096 ], height = (int) [ 16, 2160 ], "
         "framerate = (fraction) [0, MAX],"
-        "interlace-mode = { progressive, mixed, interleaved } "
+        "interlace-mode = { progressive, mixed, interleaved } ;"
+        "video/x-raw(" GST_CAPS_FEATURE_MEMORY_CUDA_MEMORY "), "
+        "format = (string) { NV12, YV12, I420 }, "
+        "width = (int) [ 16, 4096 ], height = (int) [ 16, 2160 ], "
+        "framerate = (fraction) [0, MAX],"
+        "interlace-mode = { progressive, mixed, interleaved }"
         GL_CAPS_STR
     ));
 

@@ -31,6 +31,7 @@
 
 #include "gstnvdec.h"
 #include "gstcudautils.h"
+#include "gstcudabufferpool.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_nvdec_debug_category);
 #define GST_CAT_DEFAULT gst_nvdec_debug_category
@@ -175,8 +176,10 @@ static GstStaticPadTemplate gst_nvdec_src_template =
     GST_STATIC_PAD_TEMPLATE (GST_VIDEO_DECODER_SRC_NAME,
     GST_PAD_SRC, GST_PAD_ALWAYS,
     GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE ("NV12") ";"
-        GST_VIDEO_CAPS_MAKE_WITH_FEATURES
-        (GST_CAPS_FEATURE_MEMORY_GL_MEMORY, "NV12") ", texture-target=2D")
+        GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_CUDA_MEMORY,
+            "NV12") ";"
+        GST_VIDEO_CAPS_MAKE_WITH_FEATURES (GST_CAPS_FEATURE_MEMORY_GL_MEMORY,
+            "NV12") ", texture-target=2D")
     );
 
 G_DEFINE_TYPE_WITH_CODE (GstNvDec, gst_nvdec, GST_TYPE_VIDEO_DECODER,
