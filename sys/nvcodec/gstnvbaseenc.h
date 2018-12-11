@@ -59,6 +59,13 @@ typedef enum {
   GST_NV_RC_MODE_VBR_MINQP,
 } GstNvRCMode;
 
+typedef enum
+{
+  GST_NVENC_INPUT_GL,
+  GST_NVENC_INPUT_CUDA,
+  GST_NVENC_INPUT_HOST,
+} GstNvEncInputType;
+
 typedef struct {
   GstVideoEncoder video_encoder;
 
@@ -85,7 +92,7 @@ typedef struct {
 
   GstVideoCodecState *input_state;
   volatile gint       reconfig;                   /* ATOMIC */
-  gboolean            gl_input;
+  GstNvEncInputType   input_type;
 
   /* (NvBaseEncFrameState) allocated input/output buffers,
    * hold ref of NvBaseEncFrameState */
