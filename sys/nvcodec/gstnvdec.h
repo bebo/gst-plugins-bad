@@ -53,11 +53,18 @@ typedef enum
   GST_NVDEC_STATE_DECODE,
 } GstNvDecState;
 
+typedef enum
+{
+  GST_NVDEC_OUTPUT_GL,
+  GST_NVDEC_OUTPUT_CUDA,
+  GST_NVDEC_OUTPUT_HOST,
+} GstNvDecOutputType;
+
 struct _GstNvDec
 {
   GstVideoDecoder parent;
 
-  gboolean use_gl;
+  GstNvDecOutputType output_type;
   GstGLDisplay *gl_display;
   GstGLContext *gl_context;
   GstGLContext *other_gl_context;
