@@ -43,7 +43,6 @@
 /* This currently supports both 5.x and 6.x versions of the NvEncodeAPI.h
  * header which are mostly API compatible. */
 
-#define N_BUFFERS_PER_FRAME 1
 #define SUPPORTED_GL_APIS GST_GL_API_OPENGL3
 
 /* magic pointer value we can put in the async queue to signal shut down */
@@ -197,9 +196,8 @@ typedef struct
 
 typedef struct
 {
-  gint n_buffers;
-  gpointer in_bufs[N_BUFFERS_PER_FRAME];
-  gpointer out_bufs[N_BUFFERS_PER_FRAME];
+  gpointer in_buf;
+  gpointer out_buf;
 } NvBaseEncFrameState;
 
 static gboolean gst_nv_base_enc_open (GstVideoEncoder * enc);
@@ -724,7 +722,6 @@ _find_frame_with_output_buffer (GstNvBaseEnc * nvenc, NV_ENC_OUTPUT_PTR out_buf)
 {
   GList *l, *walk = gst_video_encoder_get_frames (GST_VIDEO_ENCODER (nvenc));
   GstVideoCodecFrame *ret = NULL;
-  gint i;
 
   for (l = walk; l; l = l->next) {
     GstVideoCodecFrame *frame = (GstVideoCodecFrame *) l->data;
@@ -733,13 +730,9 @@ _find_frame_with_output_buffer (GstNvBaseEnc * nvenc, NV_ENC_OUTPUT_PTR out_buf)
     if (!state)
       continue;
 
-    for (i = 0; i < N_BUFFERS_PER_FRAME; i++) {
-
-      if (!state->out_bufs[i])
-        break;
-
-      if (state->out_bufs[i] == out_buf)
-        ret = frame;
+    if (state->out_buf == out_buf) {
+      ret = frame;
+      break;
     }
   }
 
@@ -769,23 +762,19 @@ gst_nv_base_enc_bitstream_thread (gpointer user_data)
    * 6. cleanup
    */
   do {
-    GstBuffer *buffers[N_BUFFERS_PER_FRAME];
+    GstBuffer *buffer;
     NvBaseEncFrameState *state = NULL;
     GstVideoCodecFrame *frame = NULL;
     NVENCSTATUS nv_ret;
     GstFlowReturn flow = GST_FLOW_OK;
-    gint i;
 
     {
       NV_ENC_LOCK_BITSTREAM lock_bs = { 0, };
       NV_ENC_OUTPUT_PTR out_buf;
 
-      for (i = 0; i < N_BUFFERS_PER_FRAME; i++) {
+      {
         /* get and lock bitstream buffers */
         GstVideoCodecFrame *tmp_frame;
-
-        if (state && i >= state->n_buffers)
-          break;
 
         GST_LOG_OBJECT (enc, "wait for bitstream buffer..");
 
@@ -810,7 +799,6 @@ gst_nv_base_enc_bitstream_thread (gpointer user_data)
           GST_ELEMENT_ERROR (nvenc, STREAM, ENCODE, (NULL),
               ("Failed to lock bitstream buffer %p, ret %d",
                   lock_bs.outputBitstream, nv_ret));
-          out_buf = SHUTDOWN_COOKIE;
           break;
         }
 
@@ -823,12 +811,12 @@ gst_nv_base_enc_bitstream_thread (gpointer user_data)
         frame = tmp_frame;
 
         state = gst_video_codec_frame_get_user_data (frame);
-        g_assert (state->out_bufs[i] == out_buf);
+        g_assert (state->out_buf == out_buf);
 
         /* copy into output buffer */
-        buffers[i] =
+        buffer =
             gst_buffer_new_allocate (NULL, lock_bs.bitstreamSizeInBytes, NULL);
-        gst_buffer_fill (buffers[i], 0, lock_bs.bitstreamBufferPtr,
+        gst_buffer_fill (buffer, 0, lock_bs.bitstreamBufferPtr,
             lock_bs.bitstreamSizeInBytes);
 
         if (lock_bs.pictureType == NV_ENC_PIC_TYPE_IDR) {
@@ -839,36 +827,25 @@ gst_nv_base_enc_bitstream_thread (gpointer user_data)
         /* TODO: use lock_bs.outputTimeStamp and lock_bs.outputDuration */
         /* TODO: check pts/dts is handled properly if there are B-frames */
 
-        nv_ret = NvEncUnlockBitstream (nvenc->encoder, state->out_bufs[i]);
+        nv_ret = NvEncUnlockBitstream (nvenc->encoder, state->out_buf);
         if (nv_ret != NV_ENC_SUCCESS) {
           /* FIXME: what to do here? */
           GST_ELEMENT_ERROR (nvenc, STREAM, ENCODE, (NULL),
               ("Failed to unlock bitstream buffer %p, ret %d",
                   lock_bs.outputBitstream, nv_ret));
-          state->out_bufs[i] = SHUTDOWN_COOKIE;
           break;
         }
 
         GST_LOG_OBJECT (nvenc, "returning bitstream buffer %p to pool",
-            state->out_bufs[i]);
-        g_async_queue_push (nvenc->bitstream_pool, state->out_bufs[i]);
+            state->out_buf);
+        g_async_queue_push (nvenc->bitstream_pool, state->out_buf);
       }
-
-      if (out_buf == SHUTDOWN_COOKIE)
-        break;
     }
+
+    frame->output_buffer = buffer;
 
     {
-      GstBuffer *output_buffer = gst_buffer_new ();
-
-      for (i = 0; i < state->n_buffers; i++)
-        output_buffer = gst_buffer_append (output_buffer, buffers[i]);
-
-      frame->output_buffer = output_buffer;
-    }
-
-    for (i = 0; i < state->n_buffers; i++) {
-      gpointer in_buf = state->in_bufs[i];
+      gpointer in_buf = state->in_buf;
       g_assert (in_buf != NULL);
 
 #if HAVE_NVENC_GST_GL
@@ -1778,7 +1755,6 @@ gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
   GstFlowReturn flow = GST_FLOW_OK;
   GstMapFlags in_map_flags = GST_MAP_READ;
   NvBaseEncFrameState *state = NULL;
-  guint frame_n = 0;
 
   g_assert (nvenc->encoder != NULL);
 
@@ -1807,7 +1783,6 @@ gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
     goto error;
 
   state = g_new0 (NvBaseEncFrameState, 1);
-  state->n_buffers = 1;
 
 #if HAVE_NVENC_GST_GL
   if (nvenc->gl_input) {
@@ -1849,8 +1824,8 @@ gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
       out_buf = g_async_queue_pop (nvenc->bitstream_pool);
     }
 
-    state->in_bufs[frame_n] = in_gl_resource;
-    state->out_bufs[frame_n++] = out_buf;
+    state->in_buf = in_gl_resource;
+    state->out_buf = out_buf;
 
     gst_video_codec_frame_set_user_data (frame, state, (GDestroyNotify) g_free);
 
@@ -1959,8 +1934,8 @@ gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
       out_buf = g_async_queue_pop (nvenc->bitstream_pool);
     }
 
-    state->in_bufs[frame_n] = in_buf;
-    state->out_bufs[frame_n++] = out_buf;
+    state->in_buf = in_buf;
+    state->out_buf = out_buf;
     gst_video_codec_frame_set_user_data (frame, state, (GDestroyNotify) g_free);
 
     flow =
