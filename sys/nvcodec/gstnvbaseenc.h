@@ -86,17 +86,15 @@ typedef struct {
   volatile gint       reconfig;                   /* ATOMIC */
   gboolean            gl_input;
 
-  /* allocated buffers */
-  gpointer          *input_bufs;   /* array of n_allocs input buffers  */
-  NV_ENC_OUTPUT_PTR *output_bufs;  /* array of n_allocs output buffers */
-  guint              n_bufs;
+  /* (NvBaseEncFrameState) allocated input/output buffers,
+   * hold ref of NvBaseEncFrameState */
+  GArray         *items;
 
-  /* input and output buffers currently available */
-  GAsyncQueue    *in_bufs_pool;
-  GAsyncQueue    *bitstream_pool;
+  /* (NvBaseEncFrameState) currently available items */
+  GAsyncQueue    *internal_pool;
 
-  /* output bufs in use (input bufs in use are tracked via the codec frames) */
-  GAsyncQueue    *bitstream_queue;
+  /* (NvBaseEncFrameState) currently processing itmes */
+  GAsyncQueue    *processing_queue;
 
   /* we spawn a thread that does the (blocking) waits for output buffers
    * to become available, so we can continue to feed data to the encoder
