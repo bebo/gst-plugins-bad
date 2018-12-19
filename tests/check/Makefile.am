@@ -229,6 +229,12 @@ else
 check_nvenc=
 endif
 
+if USE_NVDEC
+check_nvdec=elements/nvdec
+else
+check_nvdec=
+endif
+
 VALGRIND_TO_FIX = \
 	elements/mpeg2enc \
 	elements/mplex    \
@@ -313,6 +319,7 @@ check_PROGRAMS = \
 	$(check_webrtc) \
 	$(check_msdk) \
 	$(check_nvenc) \
+	$(check_nvdec) \
 	$(EXPERIMENTAL_CHECKS)
 
 noinst_HEADERS = elements/mxfdemux.h libs/isoff.h

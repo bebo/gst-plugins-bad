@@ -39,6 +39,7 @@ base_tests = [
   [['elements/msdkh264enc.c'], not have_msdk, [msdk_dep]],
   [['elements/mxfdemux.c']],
   [['elements/mxfmux.c']],
+  [['elements/nvdec.c'], not cuda_header_dep.found(), nvenc_test_deps],
   [['elements/nvenc.c'], not cuda_header_dep.found(), nvenc_test_deps],
   [['elements/pcapparse.c'], false, [libparser_dep]],
   [['elements/pnm.c']],
