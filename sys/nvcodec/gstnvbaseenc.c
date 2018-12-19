@@ -223,6 +223,7 @@ static GstCaps *gst_nv_base_enc_getcaps (GstVideoEncoder * enc,
     GstCaps * filter);
 static gboolean gst_nv_base_enc_stop_bitstream_thread (GstNvBaseEnc * nvenc,
     gboolean force);
+static GstCaps *gst_nv_base_enc_get_supported_input_caps (GstNvBaseEnc * nvenc);
 
 static void
 gst_nv_base_enc_class_init (GstNvBaseEncClass * klass)
@@ -420,6 +421,16 @@ _get_supported_input_formats (GstNvBaseEnc * nvenc)
   }
   g_value_unset (&val);
 
+  {
+    NV_ENC_CAPS_PARAM caps_param = { 0, };
+    caps_param.version = NV_ENC_CAPS_PARAM_VER;
+    caps_param.capsToQuery = NV_ENC_CAPS_SUPPORT_FIELD_ENCODING;
+
+    if (NvEncGetEncodeCaps (nvenc->encoder, nvenc_class->codec_id,
+            &caps_param, &nvenc->interlace_modes) != NV_ENC_SUCCESS)
+      nvenc->interlace_modes = 0;
+  }
+
   GST_OBJECT_UNLOCK (nvenc);
 
   return TRUE;
@@ -486,6 +497,54 @@ done:
 }
 
 static gboolean
+gst_nv_base_enc_accept_caps (GstNvBaseEnc * nvenc, GstCaps * caps)
+{
+  gboolean ret = TRUE;
+  gint i, size;
+  GstCaps *supported, *acceptable;
+  GstStructure *s;
+  const gchar *mode;
+
+  supported = gst_nv_base_enc_get_supported_input_caps (nvenc);
+  acceptable = gst_caps_copy (supported);
+  size = gst_caps_get_size (acceptable);
+
+  for (i = 0; i < size; i++) {
+    s = gst_caps_get_structure (acceptable, i);
+    gst_structure_remove_field (s, "interlace-mode");
+  }
+
+  if (!gst_caps_is_subset (caps, acceptable)) {
+    ret = FALSE;
+    goto beach;
+  }
+
+  s = gst_caps_get_structure (caps, 0);
+
+  if ((mode = gst_structure_get_string (s, "interlace-mode")) != NULL) {
+    GstVideoInterlaceMode imode = gst_video_interlace_mode_from_string (mode);
+    if (nvenc->interlace_modes == 0 &&
+        imode != GST_VIDEO_INTERLACE_MODE_PROGRESSIVE) {
+      ret = FALSE;
+    } else if (nvenc->interlace_modes >= 1 &&
+        imode > GST_VIDEO_INTERLACE_MODE_MIXED) {
+      ret = FALSE;
+    }
+
+    if (!ret) {
+      GST_DEBUG_OBJECT (nvenc, "cannot support interlace-mode %s",
+          gst_video_interlace_mode_to_string (imode));
+    }
+  }
+
+beach:
+  gst_caps_unref (supported);
+  gst_caps_unref (acceptable);
+
+  return ret;
+}
+
+static gboolean
 gst_nv_base_enc_sink_query (GstVideoEncoder * enc, GstQuery * query)
 {
   GstNvBaseEnc *nvenc = GST_NV_BASE_ENC (enc);
@@ -509,6 +568,17 @@ gst_nv_base_enc_sink_query (GstVideoEncoder * enc, GstQuery * query)
         return ret;
 #endif
       break;
+    }
+    case GST_QUERY_ACCEPT_CAPS:{
+      GstCaps *caps;
+      gboolean ret;
+
+      gst_query_parse_accept_caps (query, &caps);
+      ret = gst_nv_base_enc_accept_caps (nvenc, caps);
+
+      gst_query_set_accept_caps_result (query, ret);
+
+      return TRUE;
     }
     default:
       break;
@@ -576,36 +646,43 @@ gst_nv_base_enc_stop (GstVideoEncoder * enc)
   return TRUE;
 }
 
-static GValue *
-_get_interlace_modes (GstNvBaseEnc * nvenc)
+static GstCaps *
+gst_nv_base_enc_get_supported_input_caps (GstNvBaseEnc * nvenc)
 {
-  GstNvBaseEncClass *nvenc_class = GST_NV_BASE_ENC_GET_CLASS (nvenc);
-  NV_ENC_CAPS_PARAM caps_param = { 0, };
-  GValue *list = g_new0 (GValue, 1);
-  GValue val = G_VALUE_INIT;
+  GstCaps *caps;
+  GstCaps *template_caps;
 
-  g_value_init (list, GST_TYPE_LIST);
-  g_value_init (&val, G_TYPE_STRING);
+  template_caps =
+      gst_pad_get_pad_template_caps (GST_VIDEO_ENCODER_SINK_PAD (nvenc));
+  caps = gst_caps_copy (template_caps);
+  gst_caps_unref (template_caps);
 
-  g_value_set_static_string (&val, "progressive");
-  gst_value_list_append_value (list, &val);
+  if (nvenc->input_formats != NULL) {
+    GValue list = G_VALUE_INIT;
+    GValue sval = G_VALUE_INIT;
 
-  caps_param.version = NV_ENC_CAPS_PARAM_VER;
-  caps_param.capsToQuery = NV_ENC_CAPS_SUPPORT_FIELD_ENCODING;
+    gst_caps_set_value (caps, "format", nvenc->input_formats);
 
-  if (NvEncGetEncodeCaps (nvenc->encoder, nvenc_class->codec_id,
-          &caps_param, &nvenc->interlace_modes) != NV_ENC_SUCCESS)
-    nvenc->interlace_modes = 0;
+    g_value_init (&list, GST_TYPE_LIST);
+    g_value_init (&sval, G_TYPE_STRING);
 
-  if (nvenc->interlace_modes >= 1) {
-    g_value_set_static_string (&val, "interleaved");
-    gst_value_list_append_value (list, &val);
-    g_value_set_static_string (&val, "mixed");
-    gst_value_list_append_and_take_value (list, &val);
+    g_value_set_static_string (&sval, "progressive");
+    gst_value_list_append_value (&list, &sval);
+    if (nvenc->interlace_modes >= 1) {
+      g_value_set_static_string (&sval, "interleaved");
+      gst_value_list_append_value (&list, &sval);
+      g_value_set_static_string (&sval, "mixed");
+      gst_value_list_append_value (&list, &sval);
+    }
+    gst_caps_set_value (caps, "interlace-mode", &list);
+
+    g_value_unset (&sval);
+    g_value_unset (&list);
   }
-  /* TODO: figure out what nvenc frame based interlacing means in gst terms */
 
-  return list;
+  GST_LOG_OBJECT (nvenc, "  supported caps %" GST_PTR_FORMAT, caps);
+
+  return caps;
 }
 
 static GstCaps *
@@ -613,37 +690,12 @@ gst_nv_base_enc_getcaps (GstVideoEncoder * enc, GstCaps * filter)
 {
   GstNvBaseEnc *nvenc = GST_NV_BASE_ENC (enc);
   GstCaps *supported_incaps = NULL;
-  GstCaps *template_caps, *caps;
+  GstCaps *caps;
 
-  GST_OBJECT_LOCK (nvenc);
-
-  if (nvenc->input_formats != NULL) {
-    GValue *val;
-
-    template_caps = gst_pad_get_pad_template_caps (enc->sinkpad);
-    supported_incaps = gst_caps_copy (template_caps);
-    gst_caps_set_value (supported_incaps, "format", nvenc->input_formats);
-
-    val = _get_interlace_modes (nvenc);
-    gst_caps_set_value (supported_incaps, "interlace-mode", val);
-    g_value_unset (val);
-    g_free (val);
-
-    GST_LOG_OBJECT (enc, "codec input caps %" GST_PTR_FORMAT, supported_incaps);
-    GST_LOG_OBJECT (enc, "   template caps %" GST_PTR_FORMAT, template_caps);
-    caps = gst_caps_intersect (template_caps, supported_incaps);
-    gst_caps_unref (template_caps);
-    gst_caps_unref (supported_incaps);
-    supported_incaps = caps;
-    GST_LOG_OBJECT (enc, "  supported caps %" GST_PTR_FORMAT, supported_incaps);
-  }
-
-  GST_OBJECT_UNLOCK (nvenc);
+  supported_incaps = gst_nv_base_enc_get_supported_input_caps (nvenc);
 
   caps = gst_video_encoder_proxy_getcaps (enc, supported_incaps, filter);
-
-  if (supported_incaps)
-    gst_caps_unref (supported_incaps);
+  gst_clear_caps (&supported_incaps);
 
   GST_DEBUG_OBJECT (nvenc, "  returning caps %" GST_PTR_FORMAT, caps);
 
@@ -1268,6 +1320,12 @@ gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
   params->encodeConfig = &preset_config.presetCfg;
 
   if (GST_VIDEO_INFO_IS_INTERLACED (info)) {
+    if (nvenc->interlace_modes == 0) {
+      GST_ERROR_OBJECT (nvenc,
+          "driver couldn't support interlace mode encoding");
+      return FALSE;
+    }
+
     if (GST_VIDEO_INFO_INTERLACE_MODE (info) ==
         GST_VIDEO_INTERLACE_MODE_INTERLEAVED
         || GST_VIDEO_INFO_INTERLACE_MODE (info) ==
