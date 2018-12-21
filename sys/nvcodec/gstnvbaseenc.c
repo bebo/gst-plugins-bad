@@ -1411,12 +1411,7 @@ gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
     features = gst_caps_get_features (state->caps, 0);
     if (gst_caps_features_contains (features,
             GST_CAPS_FEATURE_MEMORY_GL_MEMORY)) {
-      guint pixel_depth = 0;
       nvenc->gl_input = TRUE;
-
-      for (i = 0; i < GST_VIDEO_INFO_N_COMPONENTS (info); i++) {
-        pixel_depth += GST_VIDEO_INFO_COMP_DEPTH (info, i);
-      }
 
       gst_cuda_context_push (nvenc->cuda_ctx);
       for (i = 0; i < n_bufs; ++i) {
@@ -1473,8 +1468,8 @@ gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
 
         cin_buf.version = NV_ENC_CREATE_INPUT_BUFFER_VER;
 
-        cin_buf.width = GST_ROUND_UP_32 (input_width);
-        cin_buf.height = GST_ROUND_UP_32 (input_height);
+        cin_buf.width = input_width;
+        cin_buf.height = input_height;
 
         cin_buf.memoryHeap = NV_ENC_MEMORY_HEAP_SYSMEM_CACHED;
         cin_buf.bufferFmt =
@@ -1788,6 +1783,62 @@ _submit_input_buffer (GstNvBaseEnc * nvenc, GstVideoCodecFrame * frame,
   return GST_FLOW_OK;
 }
 
+static gboolean
+gst_nv_base_enc_upload_frame (GstNvBaseEnc * nvenc, GstVideoFrame * frame,
+    NV_ENC_LOCK_INPUT_BUFFER * buf)
+{
+  gint offset[GST_VIDEO_MAX_PLANES];
+  gint stride[GST_VIDEO_MAX_PLANES];
+  GstVideoFormat format;
+  gint i, j;
+
+  format = GST_VIDEO_FRAME_FORMAT (frame);
+
+  switch (format) {
+    case GST_VIDEO_FORMAT_I420:
+    case GST_VIDEO_FORMAT_YV12:
+      offset[0] = 0;
+      stride[0] = buf->pitch;
+      offset[1] =
+          offset[0] + stride[0] * GST_VIDEO_FRAME_COMP_HEIGHT (frame, 0);
+      stride[1] = buf->pitch / 2;
+      offset[2] =
+          offset[1] + stride[1] * GST_VIDEO_FRAME_COMP_HEIGHT (frame, 1);
+      stride[2] = buf->pitch / 2;
+      break;
+    case GST_VIDEO_FORMAT_NV12:
+      offset[0] = 0;
+      stride[0] = buf->pitch;
+      offset[1] =
+          offset[0] + stride[0] * GST_VIDEO_FRAME_COMP_HEIGHT (frame, 0);
+      stride[1] = buf->pitch;
+      break;
+    default:
+      GST_ERROR_OBJECT (nvenc,
+          "cannot support format %s", gst_video_format_to_string (format));
+      return FALSE;
+  }
+
+  for (i = 0; i < GST_VIDEO_FRAME_N_PLANES (frame); i++) {
+    guint8 *src, *dst;
+    guint height = GST_VIDEO_FRAME_COMP_HEIGHT (frame, i);
+    guint width = GST_VIDEO_FRAME_COMP_WIDTH (frame, i) *
+        GST_VIDEO_FRAME_COMP_PSTRIDE (frame, i);
+    gint src_stride = GST_VIDEO_FRAME_PLANE_STRIDE (frame, i);
+
+    src = GST_VIDEO_FRAME_PLANE_DATA (frame, i);
+    dst = ((guint8 *) buf->bufferDataPtr) + offset[i];
+
+    for (j = 0; j < height; j++) {
+      memcpy (dst, src, width);
+      dst += stride[i];
+      src += src_stride;
+    }
+  }
+
+  return TRUE;
+}
+
 static GstFlowReturn
 gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
 {
@@ -1877,10 +1928,6 @@ gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
   if (!nvenc->gl_input) {
     NV_ENC_LOCK_INPUT_BUFFER in_buf_lock = { 0, };
     NV_ENC_INPUT_PTR in_buf = state->in_buf;
-    guint8 *src, *dest;
-    guint src_stride, dest_stride;
-    guint height, width;
-    guint y;
 
     GST_LOG_OBJECT (enc, "got input buffer %p", in_buf);
 
@@ -1895,64 +1942,9 @@ gst_nv_base_enc_handle_frame (GstVideoEncoder * enc, GstVideoCodecFrame * frame)
     }
     GST_LOG_OBJECT (nvenc, "Locked input buffer %p", in_buf);
 
-    width = GST_VIDEO_FRAME_WIDTH (&vframe);
-    height = GST_VIDEO_FRAME_HEIGHT (&vframe);
-
-    /* copy Y plane */
-    src = GST_VIDEO_FRAME_PLANE_DATA (&vframe, 0);
-    src_stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 0);
-    dest = in_buf_lock.bufferDataPtr;
-    dest_stride = in_buf_lock.pitch;
-    for (y = 0; y < height; ++y) {
-      memcpy (dest, src, width);
-      dest += dest_stride;
-      src += src_stride;
-    }
-
-    if (GST_VIDEO_FRAME_FORMAT (&vframe) == GST_VIDEO_FORMAT_NV12) {
-      /* copy UV plane */
-      src = GST_VIDEO_FRAME_PLANE_DATA (&vframe, 1);
-      src_stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 1);
-      dest =
-          (guint8 *) in_buf_lock.bufferDataPtr +
-          GST_ROUND_UP_32 (height) * in_buf_lock.pitch;
-      dest_stride = in_buf_lock.pitch;
-      for (y = 0; y < GST_ROUND_UP_2 (height) / 2; ++y) {
-        memcpy (dest, src, width);
-        dest += dest_stride;
-        src += src_stride;
-      }
-    } else if (GST_VIDEO_FRAME_FORMAT (&vframe) == GST_VIDEO_FORMAT_I420) {
-      guint8 *dest_u, *dest_v;
-
-      dest_u = (guint8 *) in_buf_lock.bufferDataPtr +
-          GST_ROUND_UP_32 (height) * in_buf_lock.pitch;
-      dest_v = dest_u + ((GST_ROUND_UP_32 (height) / 2) *
-          (in_buf_lock.pitch / 2));
-      dest_stride = in_buf_lock.pitch / 2;
-
-      /* copy U plane */
-      src = GST_VIDEO_FRAME_PLANE_DATA (&vframe, 1);
-      src_stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 1);
-      dest = dest_u;
-      for (y = 0; y < GST_ROUND_UP_2 (height) / 2; ++y) {
-        memcpy (dest, src, width / 2);
-        dest += dest_stride;
-        src += src_stride;
-      }
-
-      /* copy V plane */
-      src = GST_VIDEO_FRAME_PLANE_DATA (&vframe, 2);
-      src_stride = GST_VIDEO_FRAME_PLANE_STRIDE (&vframe, 2);
-      dest = dest_v;
-      for (y = 0; y < GST_ROUND_UP_2 (height) / 2; ++y) {
-        memcpy (dest, src, width / 2);
-        dest += dest_stride;
-        src += src_stride;
-      }
-    } else {
-      // FIXME: this only works for NV12 and I420
-      g_assert_not_reached ();
+    if (!gst_nv_base_enc_upload_frame (nvenc, &vframe, &in_buf_lock)) {
+      GST_ERROR_OBJECT (nvenc, "Failed to upload frame");
+      goto unmap_and_drop;
     }
 
     nv_ret = NvEncUnlockInputBuffer (nvenc->encoder, in_buf);
