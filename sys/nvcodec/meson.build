@@ -15,6 +15,8 @@ nvcodec_sources = [
   'gstcudaloader.c',
   'gstcudacontext.c',
   'gstcudautils.c',
+  'gstcudamemory.c',
+  'gstcudabufferpool.c',
 ]
 
 nvdec_option = get_option('nvdec')
