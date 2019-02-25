@@ -44,9 +44,14 @@ plugin_init (GstPlugin * plugin)
 {
   gboolean ret = TRUE;
 
+  if (!gst_cuda_load_library ())
+    return FALSE;
+
 #ifdef HAVE_NVDEC
-  ret &= gst_element_register (plugin, "nvdec", GST_RANK_PRIMARY,
-      GST_TYPE_NVDEC);
+  if (gst_cuvid_load_library ()) {
+    ret &= gst_element_register (plugin, "nvdec", GST_RANK_PRIMARY,
+        GST_TYPE_NVDEC);
+  }
 #endif
 
 #ifdef HAVE_NVENC

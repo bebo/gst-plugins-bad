@@ -1,5 +1,6 @@
 nvdec_sources = [
   'gstnvdec.c',
+  'gstcuvidloader.c',
 ]
 
 nvenc_sources = [
@@ -11,6 +12,7 @@ nvenc_sources = [
 
 nvcodec_sources = [
   'plugin.c',
+  'gstcudaloader.c'
 ]
 
 nvdec_option = get_option('nvdec')
