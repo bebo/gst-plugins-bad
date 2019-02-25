@@ -23,8 +23,8 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 
+#include "gstcudaloader.h"
 #include "nvEncodeAPI.h"
-#include <cuda.h>
 
 GST_DEBUG_CATEGORY_EXTERN (gst_nvenc_debug);
 

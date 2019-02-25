@@ -976,7 +976,7 @@ gst_nv_base_enc_free_buffers (GstNvBaseEnc * nvenc)
     if (nvenc->gl_input) {
       struct gl_input_resource *in_gl_resource = nvenc->input_bufs[i];
 
-      cuCtxPushCurrent (nvenc->cuda_ctx);
+      CuCtxPushCurrent (nvenc->cuda_ctx);
 
       if (in_gl_resource->mapped) {
         GST_LOG_OBJECT (nvenc, "Unmap resource %p", in_gl_resource);
@@ -998,14 +998,14 @@ gst_nv_base_enc_free_buffers (GstNvBaseEnc * nvenc)
         GST_ERROR_OBJECT (nvenc, "Failed to unregister resource %p, ret %d",
             in_gl_resource, nv_ret);
 
-      nv_ret = cuMemFree ((CUdeviceptr) in_gl_resource->cuda_pointer);
+      nv_ret = CuMemFree ((CUdeviceptr) in_gl_resource->cuda_pointer);
       if (nv_ret != NV_ENC_SUCCESS) {
         GST_ERROR_OBJECT (nvenc, "Failed to free CUDA device memory, ret %d",
             nv_ret);
       }
 
       g_free (in_gl_resource);
-      cuCtxPopCurrent (NULL);
+      CuCtxPopCurrent (NULL);
     } else
 #endif
     {
@@ -1300,7 +1300,7 @@ gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
         pixel_depth += GST_VIDEO_INFO_COMP_DEPTH (info, i);
       }
 
-      cuCtxPushCurrent (nvenc->cuda_ctx);
+      CuCtxPushCurrent (nvenc->cuda_ctx);
       for (i = 0; i < nvenc->n_bufs; ++i) {
         struct gl_input_resource *in_gl_resource =
             g_new0 (struct gl_input_resource, 1);
@@ -1313,13 +1313,13 @@ gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
 
         /* scratch buffer for non-contigious planer into a contigious buffer */
         cu_ret =
-            cuMemAllocPitch ((CUdeviceptr *) & in_gl_resource->cuda_pointer,
+            CuMemAllocPitch ((CUdeviceptr *) & in_gl_resource->cuda_pointer,
             &in_gl_resource->cuda_stride, input_width,
             _get_frame_data_height (info), 16);
         if (cu_ret != CUDA_SUCCESS) {
           const gchar *err;
 
-          cuGetErrorString (cu_ret, &err);
+          CuGetErrorString (cu_ret, &err);
           GST_ERROR_OBJECT (nvenc, "failed to alocate cuda scratch buffer "
               "ret %d error :%s", cu_ret, err);
           g_assert_not_reached ();
@@ -1347,7 +1347,7 @@ gst_nv_base_enc_set_format (GstVideoEncoder * enc, GstVideoCodecState * state)
         g_async_queue_push (nvenc->in_bufs_pool, nvenc->input_bufs[i]);
       }
 
-      cuCtxPopCurrent (NULL);
+      CuCtxPopCurrent (NULL);
     } else
 #endif
     {
@@ -1501,7 +1501,7 @@ _map_gl_input_buffer (GstGLContext * context, struct map_gl_input *data)
   guint i;
   CUDA_MEMCPY2D param;
 
-  cuCtxPushCurrent (data->nvenc->cuda_ctx);
+  CuCtxPushCurrent (data->nvenc->cuda_ctx);
   data_pointer = data->in_gl_resource->cuda_pointer;
   for (i = 0; i < GST_VIDEO_INFO_N_PLANES (data->info); i++) {
     guint plane_n_components;
@@ -1527,7 +1527,7 @@ _map_gl_input_buffer (GstGLContext * context, struct map_gl_input *data)
         gl_mem->mem.tex_id);
 
     cuda_ret =
-        cuGraphicsGLRegisterBuffer (&data->in_gl_resource->cuda_texture,
+        CuGraphicsGLRegisterBuffer (&data->in_gl_resource->cuda_texture,
         gl_buf_obj->id, cudaGraphicsRegisterFlagsReadOnly);
     if (cuda_ret != cudaSuccess) {
       GST_ERROR_OBJECT (data->nvenc, "failed to register GL texture %u to cuda "
@@ -1536,7 +1536,7 @@ _map_gl_input_buffer (GstGLContext * context, struct map_gl_input *data)
     }
 
     cuda_ret =
-        cuGraphicsMapResources (1, &data->in_gl_resource->cuda_texture, 0);
+        CuGraphicsMapResources (1, &data->in_gl_resource->cuda_texture, 0);
     if (cuda_ret != cudaSuccess) {
       GST_ERROR_OBJECT (data->nvenc, "failed to map GL texture %u into cuda "
           "ret :%d", gl_mem->mem.tex_id, cuda_ret);
@@ -1544,7 +1544,7 @@ _map_gl_input_buffer (GstGLContext * context, struct map_gl_input *data)
     }
 
     cuda_ret =
-        cuGraphicsResourceGetMappedPointer (&data->in_gl_resource->
+        CuGraphicsResourceGetMappedPointer (&data->in_gl_resource->
         cuda_plane_pointers[i], &data->in_gl_resource->cuda_num_bytes,
         data->in_gl_resource->cuda_texture);
     if (cuda_ret != cudaSuccess) {
@@ -1571,7 +1571,7 @@ _map_gl_input_buffer (GstGLContext * context, struct map_gl_input *data)
     param.WidthInBytes = _get_plane_width (data->info, i) * plane_n_components;
     param.Height = _get_plane_height (data->info, i);
 
-    cuda_ret = cuMemcpy2D (&param);
+    cuda_ret = CuMemcpy2D (&param);
     if (cuda_ret != cudaSuccess) {
       GST_ERROR_OBJECT (data->nvenc, "failed to copy GL texture %u into cuda "
           "ret :%d", gl_mem->mem.tex_id, cuda_ret);
@@ -1579,7 +1579,7 @@ _map_gl_input_buffer (GstGLContext * context, struct map_gl_input *data)
     }
 
     cuda_ret =
-        cuGraphicsUnmapResources (1, &data->in_gl_resource->cuda_texture, 0);
+        CuGraphicsUnmapResources (1, &data->in_gl_resource->cuda_texture, 0);
     if (cuda_ret != cudaSuccess) {
       GST_ERROR_OBJECT (data->nvenc, "failed to unmap GL texture %u from cuda "
           "ret :%d", gl_mem->mem.tex_id, cuda_ret);
@@ -1587,7 +1587,7 @@ _map_gl_input_buffer (GstGLContext * context, struct map_gl_input *data)
     }
 
     cuda_ret =
-        cuGraphicsUnregisterResource (data->in_gl_resource->cuda_texture);
+        CuGraphicsUnregisterResource (data->in_gl_resource->cuda_texture);
     if (cuda_ret != cudaSuccess) {
       GST_ERROR_OBJECT (data->nvenc, "failed to unregister GL texture %u from "
           "cuda ret :%d", gl_mem->mem.tex_id, cuda_ret);
@@ -1599,7 +1599,7 @@ _map_gl_input_buffer (GstGLContext * context, struct map_gl_input *data)
         data->in_gl_resource->cuda_stride *
         _get_plane_height (&data->nvenc->input_info, i);
   }
-  cuCtxPopCurrent (NULL);
+  CuCtxPopCurrent (NULL);
 }
 #endif
 
