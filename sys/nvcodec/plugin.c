@@ -29,15 +29,33 @@
 #include "config.h"
 #endif
 
+#include <gst/gst.h>
+
+#ifdef HAVE_NVDEC
 #include "gstnvdec.h"
+#endif
+
+#ifdef HAVE_NVENC
+#include "gstnvenc.h"
+#endif
 
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  return gst_element_register (plugin, "nvdec", GST_RANK_PRIMARY,
+  gboolean ret = TRUE;
+
+#ifdef HAVE_NVDEC
+  ret &= gst_element_register (plugin, "nvdec", GST_RANK_PRIMARY,
       GST_TYPE_NVDEC);
+#endif
+
+#ifdef HAVE_NVENC
+  ret &= gst_nvenc_plugin_init (plugin);
+#endif
+
+  return ret;
 }
 
-GST_PLUGIN_DEFINE (GST_VERSION_MAJOR, GST_VERSION_MINOR, nvdec,
-    "GStreamer NVDEC plugin", plugin_init, VERSION, "BSD",
+GST_PLUGIN_DEFINE (GST_VERSION_MAJOR, GST_VERSION_MINOR, nvcodec,
+    "GStreamer NVCODEC plugin", plugin_init, VERSION, "LGPL",
     GST_PACKAGE_NAME, GST_PACKAGE_ORIGIN)

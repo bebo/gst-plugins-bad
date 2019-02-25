@@ -36,4 +36,6 @@ gboolean                gst_nvenc_cmp_guid (GUID g1, GUID g2);
 
 NV_ENC_BUFFER_FORMAT    gst_nvenc_get_nv_buffer_format (GstVideoFormat fmt);
 
+gboolean                gst_nvenc_plugin_init (GstPlugin * plugin);
+
 #endif /* __GST_NVENC_H_INCLUDED__ */

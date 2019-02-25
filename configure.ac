@@ -988,6 +988,7 @@ AG_GST_CHECK_FEATURE(NVDEC, [nvdec], nvdec, [
 
   if test "x$HAVE_NVCUVID" = "xyes"; then
     HAVE_NVDEC=yes
+    AC_DEFINE(HAVE_NVDEC, [1] , [Define NVDEC available])
   else
     HAVE_NVDEC=no
   fi
@@ -1024,6 +1025,7 @@ AG_GST_CHECK_FEATURE(NVENC, [NVIDIA Encode API], nvenc, [
         ])
       CPPFLAGS="$save_CPPFLAGS"
     fi
+    AC_DEFINE(HAVE_NVENC, [1] , [Define NVENC available])
   else
     HAVE_NVENC="no"
   fi
@@ -2600,8 +2602,7 @@ sys/fbdev/Makefile
 sys/ipcpipeline/Makefile
 sys/kms/Makefile
 sys/msdk/Makefile
-sys/nvdec/Makefile
-sys/nvenc/Makefile
+sys/nvcodec/Makefile
 sys/opensles/Makefile
 sys/shm/Makefile
 sys/tinyalsa/Makefile

@@ -362,8 +362,8 @@ load_nvenc_library (void)
   return TRUE;
 }
 
-static gboolean
-plugin_init (GstPlugin * plugin)
+gboolean
+gst_nvenc_plugin_init (GstPlugin * plugin)
 {
   GST_DEBUG_CATEGORY_INIT (gst_nvenc_debug, "nvenc", 0, "Nvidia NVENC encoder");
 
@@ -384,9 +384,3 @@ plugin_init (GstPlugin * plugin)
 
   return TRUE;
 }
-
-GST_PLUGIN_DEFINE (GST_VERSION_MAJOR,
-    GST_VERSION_MINOR,
-    nvenc,
-    "GStreamer NVENC plugin",
-    plugin_init, VERSION, "LGPL", GST_PACKAGE_NAME, GST_PACKAGE_ORIGIN)
