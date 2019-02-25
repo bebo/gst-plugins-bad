@@ -30,8 +30,6 @@
 #define GST_CAT_DEFAULT gst_nvenc_debug
 
 #if HAVE_NVENC_GST_GL
-#include <cuda.h>
-#include <cuda_runtime_api.h>
 #include <cuda_gl_interop.h>
 #include <cudaGL.h>
 #include <gst/gl/gl.h>

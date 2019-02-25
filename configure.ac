@@ -937,15 +937,15 @@ AG_GST_CHECK_FEATURE(CUDA, [NVIDIA CUDA API],, [
       CUDA_CFLAGS="-I$CUDA_PREFIX/include"
     fi
   else
-    PKG_CHECK_MODULES([CUDA], [cuda-10.1 cudart-10.1],, [
-      PKG_CHECK_MODULES([CUDA], [cuda-10.0 cudart-10.0],, [
-        PKG_CHECK_MODULES([CUDA], [cuda-9.2 cudart-9.2],, [
-          PKG_CHECK_MODULES([CUDA], [cuda-9.1 cudart-9.1],, [
-            PKG_CHECK_MODULES([CUDA], [cuda-9.0 cudart-9.0],, [
-              PKG_CHECK_MODULES([CUDA], [cuda-8.0 cudart-8.0],, [
-                PKG_CHECK_MODULES([CUDA], [cuda-7.5 cudart-7.5],, [
-                  PKG_CHECK_MODULES([CUDA], [cuda-7.0 cudart-7.0],, [
-                    PKG_CHECK_MODULES([CUDA], [cuda-6.5 cudart-6.5],, [
+    PKG_CHECK_MODULES([CUDA], [cuda-10.1],, [
+      PKG_CHECK_MODULES([CUDA], [cuda-10.0],, [
+        PKG_CHECK_MODULES([CUDA], [cuda-9.2],, [
+          PKG_CHECK_MODULES([CUDA], [cuda-9.1],, [
+            PKG_CHECK_MODULES([CUDA], [cuda-9.0],, [
+              PKG_CHECK_MODULES([CUDA], [cuda-8.0],, [
+                PKG_CHECK_MODULES([CUDA], [cuda-7.5],, [
+                  PKG_CHECK_MODULES([CUDA], [cuda-7.0],, [
+                    PKG_CHECK_MODULES([CUDA], [cuda-6.5],, [
                       AC_MSG_WARN([Could not find cuda headers/libraries])])])])])])])])])])
   fi
 

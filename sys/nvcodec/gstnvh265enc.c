@@ -32,8 +32,6 @@ GST_DEBUG_CATEGORY_STATIC (gst_nv_h265_enc_debug);
 #define GST_CAT_DEFAULT gst_nv_h265_enc_debug
 
 #if HAVE_NVENC_GST_GL
-#include <cuda.h>
-#include <cuda_runtime_api.h>
 #include <cuda_gl_interop.h>
 #include <gst/gl/gl.h>
 #endif
