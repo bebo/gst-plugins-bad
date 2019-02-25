@@ -40,9 +40,7 @@ libgstnvcodec_la_LIBADD = \
 	$(GST_PBUTILS_LIBS) \
 	$(GST_VIDEO_LIBS) \
 	$(GST_LIBS) \
-	$(GMODULE_NO_EXPORT_LIBS) \
-	$(CUDA_LIBS) \
-	-lnvcuvid
+	$(GMODULE_NO_EXPORT_LIBS)
 
 libgstnvcodec_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 

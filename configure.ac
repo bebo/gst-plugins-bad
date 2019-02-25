@@ -932,10 +932,9 @@ AG_GST_CHECK_FEATURE(CUDA, [NVIDIA CUDA API],, [
   HAVE_CUDA="yes"
   if test "x$CUDA_PREFIX" != "x"; then
     dnl only override if not already set
-    if test "x$CUDA_CFLAGS" = "x" -a "x$CUDA_LIBS" = "x"; then
+    if test "x$CUDA_CFLAGS" = "x"; then
       dnl this is an educated guess, user can always override these
       CUDA_CFLAGS="-I$CUDA_PREFIX/include"
-      CUDA_LIBS="-L$CUDA_PREFIX/lib -L$CUDA_PREFIX/lib64 -L$CUDA_PREFIX/lib/stubs -L$CUDA_PREFIX/lib64/stubs -lcuda -lcudart"
     fi
   else
     PKG_CHECK_MODULES([CUDA], [cuda-10.1 cudart-10.1],, [
@@ -951,42 +950,17 @@ AG_GST_CHECK_FEATURE(CUDA, [NVIDIA CUDA API],, [
   fi
 
   HAVE_CUDA_H=no
-  HAVE_CUDART_H=no
   save_CPPFLAGS="$CPPFLAGS"
   CPPFLAGS="$CUDA_CFLAGS $save_CPPFLAGS "
   AC_CHECK_HEADER([cuda.h], [HAVE_CUDA_H=yes],
       AC_MSG_WARN([Could not find cuda.h]))
-  AC_CHECK_HEADER([cuda_runtime_api.h], [HAVE_CUDART_H=yes],
-      AC_MSG_WARN([Could not find cuda_runtime_api.h]))
   CPPFLAGS=$save_CPPFLAGS
-
-  dnl libcuda and libcudart libraries
-  save_LIBS="$LIBS"
-  LIBS="$CUDA_LIBS $save_LIBS"
-  HAVE_CUDART_LIB="no"
-  AC_CHECK_LIB(cudart,cudaGetErrorString,[HAVE_CUDART_LIB="yes"], [
-      AC_MSG_WARN([Could not find cudart library])])
-  HAVE_CUDA_LIB="no"
-  AC_CHECK_LIB(cuda,cuInit,[HAVE_CUDA_LIB="yes"], [
-      AC_MSG_WARN([Could not find cuda library])])
-  LIBS="$save_LIBS"
 ])
 
 dnl *** NVDEC ***
 translit(dnm, m, l) AM_CONDITIONAL(USE_NVDEC, true)
 AG_GST_CHECK_FEATURE(NVDEC, [nvdec], nvdec, [
-  save_CPPFLAGS="$CPPFLAGS"
-  CPPFLAGS="$CUDA_CFLAGS $save_CPPFLAGS"
-  CPPFLAGS=$save_CPPFLAGS
-
-  HAVE_NVCUVID=no
-  save_LIBS="$LIBS"
-  LIBS="$CUDA_LIBS $save_LIBS"
-  AC_CHECK_LIB(nvcuvid, cuvidCtxLock, [HAVE_NVCUVID=yes],
-      AC_MSG_WARN([Could not find library nvcuvid]))
-  LIBS="$save_LIBS"
-
-  if test "x$HAVE_NVCUVID" = "xyes"; then
+  if test "x$HAVE_CUDA_H" = "xyes"; then
     HAVE_NVDEC=yes
     AC_DEFINE(HAVE_NVDEC, [1] , [Define NVDEC available])
   else
@@ -997,24 +971,9 @@ AG_GST_CHECK_FEATURE(NVDEC, [nvdec], nvdec, [
 dnl *** NVENC ***
 translit(dnm, m, l) AM_CONDITIONAL(USE_NVENC, true)
 AG_GST_CHECK_FEATURE(NVENC, [NVIDIA Encode API], nvenc, [
-  dnl libnvnidia-encode library
-  HAVE_NVENCODE_LIB=no
-  AC_ARG_VAR(NVENCODE_LIBS, [linker flags for nvidia-encode])
-  saved_LIBS="$LIBS"
-  LIBS="$NVENCODE_LIBS $saved_LIBS"
-  AC_CHECK_LIB(nvidia-encode, NvEncodeAPICreateInstance, [HAVE_NVENCODE_LIB="yes"],
-      AC_MSG_WARN([Could not find library nvidia-encode]))
-  NVENCODE_LIBS="$NVENCODE_LIBS -lnvidia-encode"
-  AC_SUBST(NVENCODE_LIBS)
-  LIBS="$saved_LIBS"
-
   USE_NVENC_GST_GL=no
-  if test "x$HAVE_CUDA_H" = "xyes" \
-      -a "x$HAVE_CUDART_H" = "xyes" \
-      -a "x$HAVE_CUDA_LIB" = "xyes" \
-      -a "x$HAVE_CUDART_LIB" = "xyes" \
-      -a "x$HAVE_NVENCODE_LIB" = "xyes"; then
-    HAVE_NVENC="yes"
+  if test "x$HAVE_CUDA_H" = "xyes"; then
+    HAVE_NVENC=yes
     if test "x$GST_GL_HAVE_API_GL" = "x1"; then
       dnl cuda-gl interop header
       save_CPPFLAGS="$CPPFLAGS"
@@ -1027,7 +986,7 @@ AG_GST_CHECK_FEATURE(NVENC, [NVIDIA Encode API], nvenc, [
     fi
     AC_DEFINE(HAVE_NVENC, [1] , [Define NVENC available])
   else
-    HAVE_NVENC="no"
+    HAVE_NVENC=no
   fi
 ])
 AM_CONDITIONAL(USE_NVENC_GST_GL, test "x$USE_NVENC_GST_GL" = "xyes")
