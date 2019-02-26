@@ -74,6 +74,9 @@ struct _GstNvDec
   GstVideoCodecState *input_state;
   GstNvDecState state;
   GstFlowReturn last_ret;
+
+  /* properties */
+  gint cuda_device_id;
 };
 
 struct _GstNvDecClass

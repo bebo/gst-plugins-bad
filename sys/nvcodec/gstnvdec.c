@@ -35,6 +35,14 @@
 GST_DEBUG_CATEGORY_STATIC (gst_nvdec_debug_category);
 #define GST_CAT_DEFAULT gst_nvdec_debug_category
 
+enum
+{
+  PROP_0,
+  PROP_DEVICE_ID,
+};
+
+#define DEFAULT_DEVICE_ID -1
+
 static void
 copy_video_frame_to_gl_textures (GstGLContext * context, gpointer * args);
 
@@ -133,6 +141,10 @@ ensure_cuda_graphics_resource (GstMemory * mem, GstCudaContext * cuda_context)
   return cgr_info->resource;
 }
 
+static void gst_nvdec_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec);
+static void gst_nvdec_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec);
 static gboolean gst_nvdec_open (GstVideoDecoder * decoder);
 static gboolean gst_nvdec_start (GstVideoDecoder * decoder);
 static gboolean gst_nvdec_stop (GstVideoDecoder * decoder);
@@ -174,8 +186,19 @@ G_DEFINE_TYPE_WITH_CODE (GstNvDec, gst_nvdec, GST_TYPE_VIDEO_DECODER,
 static void
 gst_nvdec_class_init (GstNvDecClass * klass)
 {
+  GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
   GstVideoDecoderClass *video_decoder_class = GST_VIDEO_DECODER_CLASS (klass);
   GstElementClass *element_class = GST_ELEMENT_CLASS (klass);
+
+  gobject_class->set_property = gst_nvdec_set_property;
+  gobject_class->get_property = gst_nvdec_get_property;
+
+  g_object_class_install_property (gobject_class, PROP_DEVICE_ID,
+      g_param_spec_int ("cuda-device-id",
+          "Cuda Device ID",
+          "Set the GPU device to use for operations (-1 = auto)",
+          -1, G_MAXINT, DEFAULT_DEVICE_ID,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_add_static_pad_template (element_class,
       &gst_nvdec_sink_template);
@@ -210,6 +233,40 @@ gst_nvdec_init (GstNvDec * nvdec)
   gst_video_decoder_set_needs_format (GST_VIDEO_DECODER (nvdec), TRUE);
 
   nvdec->last_ret = GST_FLOW_OK;
+
+  nvdec->cuda_device_id = DEFAULT_DEVICE_ID;
+}
+
+static void
+gst_nvdec_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec)
+{
+  GstNvDec *nvdec = GST_NVDEC (object);
+
+  switch (prop_id) {
+    case PROP_DEVICE_ID:
+      nvdec->cuda_device_id = g_value_get_int (value);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
+gst_nvdec_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec)
+{
+  GstNvDec *nvdec = GST_NVDEC (object);
+
+  switch (prop_id) {
+    case PROP_DEVICE_ID:
+      g_value_set_int (value, nvdec->cuda_device_id);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
 }
 
 static gboolean
@@ -697,9 +754,8 @@ gst_nvdec_open (GstVideoDecoder * decoder)
 
   GST_DEBUG_OBJECT (nvdec, "open");
 
-  /* FIXME: set device id */
   if (!gst_cuda_ensure_element_context (GST_ELEMENT_CAST (decoder),
-          &nvdec->cuda_context, 0)) {
+          &nvdec->cuda_context, nvdec->cuda_device_id)) {
     GST_ERROR_OBJECT (nvdec, "failed to create CUDA context");
     return FALSE;
   }
@@ -1161,8 +1217,8 @@ gst_nvdec_set_context (GstElement * element, GstContext * context)
   GST_DEBUG_OBJECT (nvdec, "set context %s",
       gst_context_get_context_type (context));
 
-  /* FIXME: Add device-id */
-  if (gst_cuda_handle_set_context (element, context, &nvdec->cuda_context, 0)) {
+  if (gst_cuda_handle_set_context (element, context, &nvdec->cuda_context,
+          nvdec->cuda_device_id)) {
     goto done;
   }
 
