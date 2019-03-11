@@ -62,7 +62,7 @@ typedef struct {
   GstVideoEncoder video_encoder;
 
   /* properties */
-  guint           cuda_device_id;
+  gint            cuda_device_id;
   GstNvPreset     preset_enum;
   GUID            selected_preset;
   GstNvRCMode     rate_control_mode;

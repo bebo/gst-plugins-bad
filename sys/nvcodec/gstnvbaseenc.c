@@ -154,6 +154,7 @@ enum
   PROP_GOP_SIZE,
 };
 
+#define DEFAULT_DEVICE_ID -1
 #define DEFAULT_PRESET GST_NV_PRESET_DEFAULT
 #define DEFAULT_BITRATE 0
 #define DEFAULT_RC_MODE GST_NV_RC_MODE_DEFAULT
@@ -243,10 +244,12 @@ gst_nv_base_enc_class_init (GstNvBaseEncClass * klass)
   videoenc_class->sink_query = GST_DEBUG_FUNCPTR (gst_nv_base_enc_sink_query);
 
   g_object_class_install_property (gobject_class, PROP_DEVICE_ID,
-      g_param_spec_uint ("cuda-device-id",
+      g_param_spec_int ("cuda-device-id",
           "Cuda Device ID",
-          "Set the GPU device to use for operations",
-          0, G_MAXUINT, 0, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+          "Set the GPU device to use for operations (-1 = auto)",
+          -1, G_MAXINT, DEFAULT_DEVICE_ID,
+          G_PARAM_READWRITE | GST_PARAM_MUTABLE_READY |
+          G_PARAM_STATIC_STRINGS));
   g_object_class_install_property (gobject_class, PROP_PRESET,
       g_param_spec_enum ("preset", "Encoding Preset",
           "Encoding Preset",
@@ -663,6 +666,7 @@ gst_nv_base_enc_init (GstNvBaseEnc * nvenc)
 {
   GstVideoEncoder *encoder = GST_VIDEO_ENCODER (nvenc);
 
+  nvenc->cuda_device_id = DEFAULT_DEVICE_ID;
   nvenc->preset_enum = DEFAULT_PRESET;
   nvenc->selected_preset = _nv_preset_to_guid (nvenc->preset_enum);
   nvenc->rate_control_mode = DEFAULT_RC_MODE;
@@ -1970,7 +1974,7 @@ gst_nv_base_enc_set_property (GObject * object, guint prop_id,
 
   switch (prop_id) {
     case PROP_DEVICE_ID:
-      nvenc->cuda_device_id = g_value_get_uint (value);
+      nvenc->cuda_device_id = g_value_get_int (value);
       break;
     case PROP_PRESET:
       nvenc->preset_enum = g_value_get_enum (value);
@@ -2015,7 +2019,7 @@ gst_nv_base_enc_get_property (GObject * object, guint prop_id, GValue * value,
 
   switch (prop_id) {
     case PROP_DEVICE_ID:
-      g_value_set_uint (value, nvenc->cuda_device_id);
+      g_value_set_int (value, nvenc->cuda_device_id);
       break;
     case PROP_PRESET:
       g_value_set_enum (value, nvenc->preset_enum);
