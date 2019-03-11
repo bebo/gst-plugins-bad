@@ -16,11 +16,8 @@ enable_gst_player_tests = get_option('gst_player_tests')
 
 # Need explicit dependency listing for nvenc on Windows
 nvenc_test_deps = []
-if cuda_dep.found() and cudart_dep.found()
-  nvenc_test_deps += [cuda_dep, cudart_dep, gmodule_dep, gstgl_dep]
-  if use_nvenc_gl
-    nvenc_test_deps += gstgl_dep
-  endif
+if cuda_header_dep.found()
+  nvenc_test_deps += [gmodule_dep, gstgl_dep]
 endif
 
 # name, condition when to skip the test and extra dependencies
@@ -42,7 +39,7 @@ base_tests = [
   [['elements/msdkh264enc.c'], not have_msdk, [msdk_dep]],
   [['elements/mxfdemux.c']],
   [['elements/mxfmux.c']],
-  [['elements/nvenc.c'], not cuda_dep.found() or not cudart_dep.found(), nvenc_test_deps],
+  [['elements/nvenc.c'], not cuda_header_dep.found(), nvenc_test_deps],
   [['elements/pcapparse.c'], false, [libparser_dep]],
   [['elements/pnm.c']],
   [['elements/rtponvifparse.c']],
