@@ -21,25 +21,31 @@
 #define __GST_CUDA_UTILS_H__
 
 #include <gst/gst.h>
-#include "gstcudacontext.h"
+#include <gst/cuda/cuda-prelude.h>
+#include <gst/cuda/gstcuda_fwd.h>
 
 G_BEGIN_DECLS
 
+GST_CUDA_API
 gboolean        gst_cuda_result (gint result);
 
+GST_CUDA_API
 gboolean        gst_cuda_ensure_element_context (GstElement * element,
                                                  GstCudaContext ** cuda_ctx,
                                                  gint device_id);
 
+GST_CUDA_API
 gboolean        gst_cuda_handle_set_context     (GstElement * element,
                                                  GstContext * context,
                                                  GstCudaContext ** cuda_ctx,
                                                  gint device_id);
 
+GST_CUDA_API
 gboolean        gst_cuda_handle_context_query   (GstElement * element,
                                                  GstQuery * query,
                                                  GstCudaContext * cuda_ctx);
 
+GST_CUDA_API
 GstContext *    gst_context_new_cuda_context    (GstCudaContext * context);
 
 

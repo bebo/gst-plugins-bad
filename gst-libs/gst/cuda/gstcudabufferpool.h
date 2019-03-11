@@ -23,7 +23,9 @@
 #include <gst/video/gstvideometa.h>
 #include <gst/video/gstvideopool.h>
 
-#include "gstcudamemory.h"
+#include <gst/cuda/gstcuda_fwd.h>
+#include <gst/cuda/cuda-prelude.h>
+#include <gst/cuda/gstcudamemory.h>
 
 G_BEGIN_DECLS
 
@@ -35,8 +37,6 @@ G_BEGIN_DECLS
 #define GST_IS_CUDA_BUFFER_POOL_CLASS(klass)  (G_TYPE_CHECK_CLASS_TYPE ((klass), GST_TYPE_CUDA_BUFFER_POOL))
 #define GST_CUDA_BUFFER_POOL_CAST(obj)        ((GstCudaBufferPool*)(obj))
 
-typedef struct _GstCudaBufferPool GstCudaBufferPool;
-typedef struct _GstCudaBufferPoolClass GstCudaBufferPoolClass;
 typedef struct _GstCudaBufferPoolPrivate GstCudaBufferPoolPrivate;
 
 /*
@@ -57,8 +57,10 @@ struct _GstCudaBufferPoolClass
   GstBufferPoolClass parent_class;
 };
 
+GST_CUDA_API
 GType gst_cuda_buffer_pool_get_type (void);
 
+GST_CUDA_API
 GstBufferPool * gst_cuda_buffer_pool_new (GstCudaContext * context,
                                           GstCudaMemoryTarget target);
 

@@ -30,6 +30,8 @@
 #endif
 
 #include <gst/gst.h>
+#include <gst/cuda/gstcuda.h>
+#include <gst/cuda/gstcuda_private.h>
 
 #ifdef HAVE_NVDEC
 #include "gstnvdec.h"

@@ -12,68 +12,21 @@ nvenc_sources = [
 
 nvcodec_sources = [
   'plugin.c',
-  'gstcudaloader.c',
-  'gstcudacontext.c',
-  'gstcudautils.c',
-  'gstcudamemory.c',
-  'gstcudabufferpool.c',
 ]
 
 nvdec_option = get_option('nvdec')
 nvenc_option = get_option('nvenc')
 
-cuda_dep = dependency('', required : false)
-cuda_header_dep = dependency('', required : false)
-cuda_incdir = ''
 use_nvenc_gl = false
 extra_c_args = []
+have_nvenc = false
+have_nvdec = false
 
 if nvdec_option.disabled() and nvenc_option.disabled()
   subdir_done()
 endif
 
-# CUDA dependency
-if host_machine.system() == 'windows'
-  # On windows, CUDA_PATH env will be set by installer
-  cuda_root = run_command(python3, '-c', 'import os; print(os.environ.get("CUDA_PATH"))').stdout().strip()
-  if cuda_root != '' and cuda_root != 'None'
-    cuda_incdir = join_paths (cuda_root, 'include')
-    if cc.has_header('cuda.h', args: '-I' + cuda_incdir)
-      cuda_header_dep = declare_dependency(include_directories: include_directories(cuda_incdir))
-    endif
-  endif
-else
-  cuda_versions = [
-    '10.1',
-    '10.0',
-    '9.2',
-    '9.1',
-    '9.0',
-    '8.0',
-    '7.5',
-    '7.0',
-    '6.5',
-  ]
-  cuda_ver = ''
-
-  # FIXME: use break syntax when we use meson >= '0.49'
-  foreach v : cuda_versions
-    if cuda_ver == ''
-      cuda_dep = dependency('cuda-' + v, required: false)
-      if cuda_dep.found()
-        cuda_ver = v
-      endif
-    endif
-  endforeach
-
-  if cuda_dep.found()
-    if cc.has_header('cuda.h', dependencies: cuda_dep)
-      cuda_header_dep = cuda_dep.partial_dependency(compile_args : true, includes : true)
-    endif
-  endif
-endif
-
-if not cuda_header_dep.found()
+if not gstcuda_dep.found()
   if nvdec_option.enabled()
     error('The nvdec plugin was enabled explicitly, but required CUDA library was not found.')
   endif
@@ -89,6 +42,7 @@ endif
 if not nvdec_option.disabled()
   extra_c_args += ['-DHAVE_NVDEC=1']
   nvcodec_sources += nvdec_sources
+  have_nvdec = true
 endif
 
 # NVENC dependency
@@ -98,7 +52,7 @@ if not nvenc_option.disabled()
       use_nvenc_gl = true
     endif
   else
-    if cc.has_header('cuda_gl_interop.h', dependencies: cuda_dep)
+    if cc.has_header('cuda_gl_interop.h', dependencies: cuda_header_dep)
       use_nvenc_gl = true
     endif
   endif
@@ -109,13 +63,14 @@ if not nvenc_option.disabled()
 
   extra_c_args += ['-DHAVE_NVENC=1']
   nvcodec_sources += nvenc_sources
+  have_nvenc = true
 endif
 
 gstnvcodec = library('gstnvcodec',
   nvcodec_sources,
   c_args : gst_plugins_bad_args + extra_c_args,
   include_directories : [configinc],
-  dependencies : [gstbase_dep, gstvideo_dep, gstpbutils_dep, gstgl_dep, cuda_header_dep, gmodule_dep],
+  dependencies : [gstbase_dep, gstvideo_dep, gstpbutils_dep, gstcuda_dep],
   install : true,
   install_dir : plugins_install_dir,
 )

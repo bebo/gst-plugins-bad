@@ -30,9 +30,9 @@
 
 #include <gst/gl/gl.h>
 #include <gst/gl/gstglfuncs.h>
-#include "gstcudaloader.h"
+#include <gst/cuda/gstcuda.h>
+#include <gst/cuda/gstcuda_private.h>
 #include "gstcuvidloader.h"
-#include "gstcudacontext.h"
 #include <cudaGL.h>
 
 G_BEGIN_DECLS

@@ -23,6 +23,8 @@
 
 #include "gstcudamemory.h"
 #include "gstcudautils.h"
+#include "gstcudacontext.h"
+#include "gstcuda_private.h"
 
 #include <string.h>
 

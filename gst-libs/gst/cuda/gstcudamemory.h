@@ -22,8 +22,8 @@
 
 #include <gst/gst.h>
 #include <gst/gstallocator.h>
-#include "gstcudaloader.h"
-#include "gstcudacontext.h"
+#include <gst/cuda/gstcuda_fwd.h>
+#include <gst/cuda/cuda-prelude.h>
 
 G_BEGIN_DECLS
 
@@ -35,10 +35,6 @@ G_BEGIN_DECLS
 #define GST_IS_CUDA_ALLOCATOR_CLASS(klass)  (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_CUDA_ALLOCATOR))
 #define GST_CUDA_ALLOCATOR_CAST(obj)        ((GstCudaAllocator *)(obj))
 #define GST_CUDA_MEMORY_CAST(mem)           ((GstCudaMemory *) (mem))
-
-typedef struct _GstCudaAllocator GstCudaAllocator;
-typedef struct _GstCudaAllocatorClass GstCudaAllocatorClass;
-typedef struct _GstCudaMemory GstCudaMemory;
 
 /**
  * GST_MAP_CUDA:
@@ -83,8 +79,10 @@ struct _GstCudaAllocatorClass
   GstAllocatorClass parent_class;
 };
 
+GST_CUDA_API
 GType          gst_cuda_allocator_get_type (void);
 
+GST_CUDA_API
 GstAllocator * gst_cuda_allocator_new (GstCudaContext * context,
                                        GstCudaMemoryTarget target);
 
@@ -108,8 +106,10 @@ struct _GstCudaMemory
   GMutex lock;
 };
 
+GST_CUDA_API
 gboolean        gst_is_cuda_memory        (GstMemory * mem);
 
+GST_CUDA_API
 gboolean        gst_cuda_memory_get_target (GstCudaMemory * mem,
                                             GstCudaMemoryTarget * target);
 

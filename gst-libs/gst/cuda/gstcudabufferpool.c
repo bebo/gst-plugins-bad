@@ -23,7 +23,7 @@
 
 #include "gstcudabufferpool.h"
 #include "gstcudacontext.h"
-#include "gstcudamemory.h"
+#include "gstcuda_private.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_cuda_buffer_pool_debug);
 #define GST_CAT_DEFAULT gst_cuda_buffer_pool_debug

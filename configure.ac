@@ -2538,6 +2538,7 @@ gst-libs/gst/insertbin/Makefile
 gst-libs/gst/interfaces/Makefile
 gst-libs/gst/isoff/Makefile
 gst-libs/gst/codecparsers/Makefile
+gst-libs/gst/cuda/Makefile
 gst-libs/gst/mpegts/Makefile
 gst-libs/gst/sctp/Makefile
 gst-libs/gst/uridownloader/Makefile

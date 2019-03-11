@@ -1,5 +1,7 @@
-/* GStreamer NVENC plugin
- * Copyright (C) 2015 Centricular Ltd
+/* GStreamer CUDA Library
+ * Copyright (C) 2019 GStreamer developers
+ *
+ * cuda-prelude.h: prelude include header for gst-cuda library
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -17,21 +19,17 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef __GST_NVENC_H_INCLUDED__
-#define __GST_NVENC_H_INCLUDED__
+#ifndef __GST_CUDA_PRELUDE_H__
+#define __GST_CUDA_PRELUDE_H__
 
 #include <gst/gst.h>
-#include <gst/video/video.h>
 
-#include <gst/cuda/gstcuda.h>
-#include "nvEncodeAPI.h"
+#ifndef GST_CUDA_API
+# ifdef BUILDING_GST_CUDA
+#  define GST_CUDA_API GST_API_EXPORT         /* from config.h */
+# else
+#  define GST_CUDA_API GST_API_IMPORT
+# endif
+#endif
 
-GST_DEBUG_CATEGORY_EXTERN (gst_nvenc_debug);
-
-gboolean                gst_nvenc_cmp_guid (GUID g1, GUID g2);
-
-NV_ENC_BUFFER_FORMAT    gst_nvenc_get_nv_buffer_format (GstVideoFormat fmt);
-
-gboolean                gst_nvenc_plugin_init (GstPlugin * plugin);
-
-#endif /* __GST_NVENC_H_INCLUDED__ */
+#endif /* __GST_CUDA_PRELUDE_H__ */

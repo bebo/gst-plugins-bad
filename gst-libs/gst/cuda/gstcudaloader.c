@@ -21,8 +21,10 @@
 #include "config.h"
 #endif
 
-#include "gstcudaloader.h"
+#include "gstcuda_private.h"
 #include <gmodule.h>
+
+G_LOCK_DEFINE_STATIC (init_lock);
 
 #ifndef G_OS_WIN32
 #define CUDA_LIBNAME "libcuda.so.1"
@@ -38,7 +40,7 @@
 } G_STMT_END;
 
 /* *INDENT-OFF* */
-typedef struct _GstNvCodecCudaVTable
+typedef struct _GstCudaVTable
 {
   GModule *module;
   CUresult (*CuInit) (unsigned int Flags);
@@ -76,28 +78,32 @@ typedef struct _GstNvCodecCudaVTable
 
   CUresult (*CuGraphicsGLRegisterImage) (CUgraphicsResource * pCudaResource, unsigned int image, unsigned int target, unsigned int Flags);
   CUresult (*CuGraphicsGLRegisterBuffer) (CUgraphicsResource * pCudaResource, unsigned int buffer, unsigned int Flags);
-} GstNvCodecCudaVTable;
+} GstCudaVTable;
 /* *INDENT-ON* */
 
-static GstNvCodecCudaVTable *gst_cuda_vtable = NULL;
+static GstCudaVTable *gst_cuda_vtable = NULL;
 
 gboolean
 gst_cuda_load_library (void)
 {
   GModule *module;
   const gchar *filename = CUDA_LIBNAME;
-  GstNvCodecCudaVTable *vtable;
+  GstCudaVTable *vtable;
 
-  if (gst_cuda_vtable)
+  G_LOCK (init_lock);
+  if (gst_cuda_vtable) {
+    G_UNLOCK (init_lock);
     return TRUE;
+  }
 
   module = g_module_open (filename, G_MODULE_BIND_LAZY);
   if (module == NULL) {
+    G_UNLOCK (init_lock);
     GST_ERROR ("Could not open library %s, %s", filename, g_module_error ());
     return FALSE;
   }
 
-  vtable = g_slice_new0 (GstNvCodecCudaVTable);
+  vtable = g_slice_new0 (GstCudaVTable);
 
   /* cuda.h */
   LOAD_SYMBOL (cuInit, CuInit);
@@ -140,12 +146,14 @@ gst_cuda_load_library (void)
 
   vtable->module = module;
   gst_cuda_vtable = vtable;
+  G_UNLOCK (init_lock);
 
   return TRUE;
 
 error:
   g_module_close (module);
-  g_slice_free (GstNvCodecCudaVTable, vtable);
+  g_slice_free (GstCudaVTable, vtable);
+  G_UNLOCK (init_lock);
 
   return FALSE;
 }

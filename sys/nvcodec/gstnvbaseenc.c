@@ -22,7 +22,6 @@
 #endif
 
 #include "gstnvbaseenc.h"
-#include "gstcudautils.h"
 
 #include <gst/pbutils/codec-utils.h>
 

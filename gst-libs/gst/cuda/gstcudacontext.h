@@ -21,6 +21,8 @@
 #define __GST_CUDA_CONTEXT_H__
 
 #include <gst/gst.h>
+#include <gst/cuda/gstcuda_fwd.h>
+#include <gst/cuda/cuda-prelude.h>
 
 G_BEGIN_DECLS
 
@@ -34,8 +36,6 @@ G_BEGIN_DECLS
 
 #define GST_CUDA_CONTEXT_TYPE "gst.cuda.context"
 
-typedef struct _GstCudaContext GstCudaContext;
-typedef struct _GstCudaContextClass GstCudaContextClass;
 typedef struct _GstCudaContextPrivate GstCudaContextPrivate;
 
 /*
@@ -57,14 +57,19 @@ struct _GstCudaContextClass
   GstObjectClass parent_class;
 };
 
+GST_CUDA_API
 GType            gst_cuda_context_get_type    (void);
 
+GST_CUDA_API
 GstCudaContext * gst_cuda_context_new         (gint device_id);
 
+GST_CUDA_API
 gboolean         gst_cuda_context_push        (GstCudaContext * ctx);
 
+GST_CUDA_API
 gboolean         gst_cuda_context_pop         (void);
 
+GST_CUDA_API
 gpointer         gst_cuda_context_get_context (GstCudaContext * ctx);
 
 G_END_DECLS

@@ -1,12 +1,7 @@
 plugin_LTLIBRARIES = libgstnvcodec.la
 
 libgstnvcodec_la_SOURCES = \
-	plugin.c \
-	gstcudaloader.c
-	gstcudacontext.c \
-	gstcudautils.c \
-	gstcudamemory.c \
-	gstcudabufferpool.c
+	plugin.c
 
 if USE_NVDEC
 libgstnvcodec_la_SOURCES += \
@@ -28,12 +23,7 @@ noinst_HEADERS = \
 	gstnvbaseenc.h \
 	gstnvh264enc.h \
 	gstnvh265enc.h \
-	gstcudaloader.h \
 	gstcuvidloader.h
-	gstcudacontext.h \
-	gstcudautils.h \
-	gstcudamemory.h \
-	gstcudabufferpool.h
 
 libgstnvcodec_la_CFLAGS = \
 	$(GST_PLUGINS_BAD_CFLAGS) \
@@ -48,7 +38,8 @@ libgstnvcodec_la_LIBADD = \
 	$(GST_PBUTILS_LIBS) \
 	$(GST_VIDEO_LIBS) \
 	$(GST_LIBS) \
-	$(GMODULE_NO_EXPORT_LIBS)
+	$(GMODULE_NO_EXPORT_LIBS) \
+	$(top_builddir)/gst-libs/gst/cuda/libgstcuda-$(GST_API_VERSION).la
 
 libgstnvcodec_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 
