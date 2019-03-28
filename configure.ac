@@ -950,11 +950,27 @@ AG_GST_CHECK_FEATURE(CUDA, [NVIDIA CUDA API],, [
   fi
 
   HAVE_CUDA_H=no
+  HAVE_NPP_H=no
   save_CPPFLAGS="$CPPFLAGS"
   CPPFLAGS="$CUDA_CFLAGS $save_CPPFLAGS "
   AC_CHECK_HEADER([cuda.h], [HAVE_CUDA_H=yes],
       AC_MSG_WARN([Could not find cuda.h]))
+  AC_CHECK_HEADER([npp.h], [
+      HAVE_NPP_H=yes
+      AC_DEFINE(HAVE_NPP, [1] , [Define NPP available])
+      ],
+      AC_MSG_WARN([Could not find npp.h]))
   CPPFLAGS=$save_CPPFLAGS
+])
+
+dnl *** NPP ***
+translit(dnm, m, l) AM_CONDITIONAL(USE_NPP, true)
+AG_GST_CHECK_FEATURE(NPP, [npp], npp, [
+  if test "x$HAVE_NPP_H" = "xyes"; then
+    HAVE_NPP=yes
+  else
+    HAVE_NPP=no
+  fi
 ])
 
 dnl *** NVDEC ***
@@ -2562,6 +2578,7 @@ sys/fbdev/Makefile
 sys/ipcpipeline/Makefile
 sys/kms/Makefile
 sys/msdk/Makefile
+sys/npp/Makefile
 sys/nvcodec/Makefile
 sys/opensles/Makefile
 sys/shm/Makefile

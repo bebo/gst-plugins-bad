@@ -1,5 +1,5 @@
 /* GStreamer
- * Copyright (C) <2018> Seungha Yang <seungha.yang@navercorp.com>
+ * Copyright (C) <2019> Seungha Yang <seungha.yang@navercorp.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -17,15 +17,34 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef __GST_CUDA_H__
-#define __GST_CUDA_H__
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
 
-#include <gst/cuda/gstcuda_fwd.h>
-#include <gst/cuda/cuda-prelude.h>
-#include <gst/cuda/gstcudacontext.h>
-#include <gst/cuda/gstcudautils.h>
-#include <gst/cuda/gstcudamemory.h>
-#include <gst/cuda/gstcudabufferpool.h>
-#include <gst/cuda/gstcudabasefilter.h>
+#include <gst/gst.h>
+#include <gst/cuda/gstcuda.h>
+#include <gst/cuda/gstcuda_private.h>
 
-#endif /* __GST_CUDA_H__ */
+#include "gstnppscale.h"
+#include "gstnpploader.h"
+
+static gboolean
+plugin_init (GstPlugin * plugin)
+{
+  gboolean ret = TRUE;
+
+  if (!gst_cuda_load_library ())
+    return FALSE;
+
+  if (!gst_cuda_load_npp_library ())
+    return FALSE;
+
+  ret &= gst_element_register (plugin, "nppscale", GST_RANK_NONE,
+      GST_TYPE_NPP_SCALE);
+
+  return ret;
+}
+
+GST_PLUGIN_DEFINE (GST_VERSION_MAJOR, GST_VERSION_MINOR, npp,
+    "GStreamer NVIDIA Performance Primitives plugin", plugin_init, VERSION,
+    "LGPL", GST_PACKAGE_NAME, GST_PACKAGE_ORIGIN)

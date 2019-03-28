@@ -5,7 +5,8 @@ libgstcuda_@GST_API_VERSION@_la_SOURCES = \
 	gstcudautils.c \
 	gstcudacontext.c \
 	gstcudamemory.c \
-	gstcudabufferpool.c
+	gstcudabufferpool.c \
+	gstcudabasefilter.c
 
 noinst_HEADERS = \
 	gstcudaloader.h \
@@ -33,4 +34,5 @@ libgstcuda_@GST_API_VERSION@include_HEADERS = \
 	gstcudautils.h \
 	gstcudacontext.h \
 	gstcudamemory.h \
-	gstcudabufferpool.h
+	gstcudabufferpool.h \
+	gstcudabasefilter.h

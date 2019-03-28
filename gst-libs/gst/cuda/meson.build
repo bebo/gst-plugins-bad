@@ -4,6 +4,7 @@ cuda_sources = [
   'gstcudacontext.c',
   'gstcudamemory.c',
   'gstcudabufferpool.c',
+  'gstcudabasefilter.c',
 ]
 
 cuda_headers = [
@@ -13,7 +14,7 @@ cuda_headers = [
   'gstcudautils.h',
   'gstcudacontext.h',
   'gstcudamemory.h',
-  'gstcudabufferpool.h',
+  'gstcudabasefilter.h',
 ]
 
 cuda_dep = dependency('', required : false)
