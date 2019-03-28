@@ -1,7 +1,9 @@
 plugin_LTLIBRARIES = libgstnvcodec.la
 
 libgstnvcodec_la_SOURCES = \
-	plugin.c
+	plugin.c \
+	gstcudadownload.c \
+	gstcudaupload.c
 
 if USE_NVDEC
 libgstnvcodec_la_SOURCES += \
@@ -23,7 +25,9 @@ noinst_HEADERS = \
 	gstnvbaseenc.h \
 	gstnvh264enc.h \
 	gstnvh265enc.h \
-	gstcuvidloader.h
+	gstcuvidloader.h \
+	gstcudadownload.h \
+	gstcudaupload.h
 
 libgstnvcodec_la_CFLAGS = \
 	$(GST_PLUGINS_BAD_CFLAGS) \

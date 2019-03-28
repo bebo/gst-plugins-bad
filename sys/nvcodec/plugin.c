@@ -41,6 +41,9 @@
 #include "gstnvenc.h"
 #endif
 
+#include "gstcudaupload.h"
+#include "gstcudadownload.h"
+
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
@@ -59,6 +62,11 @@ plugin_init (GstPlugin * plugin)
 #ifdef HAVE_NVENC
   ret &= gst_nvenc_plugin_init (plugin);
 #endif
+
+  ret &= gst_element_register (plugin, "cudadownload", GST_RANK_NONE,
+      GST_TYPE_CUDA_DOWNLOAD);
+  ret &= gst_element_register (plugin, "cudaupload", GST_RANK_NONE,
+      GST_TYPE_CUDA_UPLOAD);
 
   return ret;
 }
