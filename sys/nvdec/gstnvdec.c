@@ -834,7 +834,7 @@ handle_pending_frames (GstNvDec * nvdec)
 
         if (!GST_CLOCK_TIME_IS_VALID (pending_frame->duration)) {
           pending_frame->duration =
-              nvdec->fps_n ? GST_SECOND * nvdec->fps_d / nvdec->fps_n : 0;
+              nvdec->fps_n ? GST_SECOND * nvdec->fps_n / nvdec->fps_d : 0;
         }
         latency += pending_frame->duration;
 
