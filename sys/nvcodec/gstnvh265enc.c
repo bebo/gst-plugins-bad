@@ -32,8 +32,6 @@ GST_DEBUG_CATEGORY_STATIC (gst_nv_h265_enc_debug);
 #define GST_CAT_DEFAULT gst_nv_h265_enc_debug
 
 #if HAVE_NVENC_GST_GL
-#include <cuda.h>
-#include <cuda_runtime_api.h>
 #include <cuda_gl_interop.h>
 #include <gst/gl/gl.h>
 #endif
@@ -56,9 +54,14 @@ G_DEFINE_TYPE (GstNvH265Enc, gst_nv_h265_enc, GST_TYPE_NV_BASE_ENC);
 static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("video/x-raw, " "format = (string) { NV12, I420 }, "       // TODO: YV12, Y444 support
-        "width = (int) [ 16, 4096 ], height = (int) [ 16, 4096 ], "
-        "framerate = (fraction) [0, MAX] "
+    /* TODO: add support Y444 */
+    GST_STATIC_CAPS ("video/x-raw, " "format = (string) { NV12, YV12, I420 }, "
+        "width = (int) [ 16, 4096 ], height = (int) [ 16, 2160 ], "
+        "framerate = (fraction) [0, MAX] ;"
+        "video/x-raw(" GST_CAPS_FEATURE_MEMORY_CUDA_MEMORY "), "
+        "format = (string) { NV12, YV12, I420 }, "
+        "width = (int) [ 16, 4096 ], height = (int) [ 16, 2160 ], "
+        "framerate = (fraction) [0, MAX]"
         GL_CAPS_STR
     ));
 
@@ -66,7 +69,7 @@ static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("video/x-h265, "
-        "width = (int) [ 1, 4096 ], height = (int) [ 1, 4096 ], "
+        "width = (int) [ 16, 4096 ], height = (int) [ 16, 2160 ], "
         "framerate = (fraction) [0/1, MAX], "
         "stream-format = (string) byte-stream, "
         "alignment = (string) au, "
@@ -76,8 +79,6 @@ static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
 
 static gboolean gst_nv_h265_enc_open (GstVideoEncoder * enc);
 static gboolean gst_nv_h265_enc_close (GstVideoEncoder * enc);
-static GstCaps *gst_nv_h265_enc_getcaps (GstVideoEncoder * enc,
-    GstCaps * filter);
 static gboolean gst_nv_h265_enc_set_src_caps (GstNvBaseEnc * nvenc,
     GstVideoCodecState * state);
 static gboolean gst_nv_h265_enc_set_encoder_config (GstNvBaseEnc * nvenc,
@@ -104,8 +105,6 @@ gst_nv_h265_enc_class_init (GstNvH265EncClass * klass)
 
   videoenc_class->open = GST_DEBUG_FUNCPTR (gst_nv_h265_enc_open);
   videoenc_class->close = GST_DEBUG_FUNCPTR (gst_nv_h265_enc_close);
-
-  videoenc_class->getcaps = GST_DEBUG_FUNCPTR (gst_nv_h265_enc_getcaps);
 
   nvenc_class->codec_id = NV_ENC_CODEC_HEVC_GUID;
   nvenc_class->set_encoder_config = gst_nv_h265_enc_set_encoder_config;
@@ -238,42 +237,6 @@ gst_nv_h265_enc_close (GstVideoEncoder * enc)
   GST_OBJECT_UNLOCK (nvenc);
 
   return GST_VIDEO_ENCODER_CLASS (gst_nv_h265_enc_parent_class)->close (enc);
-}
-
-static GstCaps *
-gst_nv_h265_enc_getcaps (GstVideoEncoder * enc, GstCaps * filter)
-{
-  GstNvH265Enc *nvenc = GST_NV_H265_ENC (enc);
-  GstCaps *supported_incaps = NULL;
-  GstCaps *template_caps, *caps;
-  GValue *input_formats = GST_NV_BASE_ENC (enc)->input_formats;
-
-  GST_OBJECT_LOCK (nvenc);
-
-  if (input_formats != NULL) {
-    template_caps = gst_pad_get_pad_template_caps (enc->sinkpad);
-    supported_incaps = gst_caps_copy (template_caps);
-    gst_caps_set_value (supported_incaps, "format", input_formats);
-
-    GST_LOG_OBJECT (enc, "codec input caps %" GST_PTR_FORMAT, supported_incaps);
-    GST_LOG_OBJECT (enc, "   template caps %" GST_PTR_FORMAT, template_caps);
-    caps = gst_caps_intersect (template_caps, supported_incaps);
-    gst_caps_unref (template_caps);
-    gst_caps_unref (supported_incaps);
-    supported_incaps = caps;
-    GST_LOG_OBJECT (enc, "  supported caps %" GST_PTR_FORMAT, supported_incaps);
-  }
-
-  GST_OBJECT_UNLOCK (nvenc);
-
-  caps = gst_video_encoder_proxy_getcaps (enc, supported_incaps, filter);
-
-  if (supported_incaps)
-    gst_caps_unref (supported_incaps);
-
-  GST_DEBUG_OBJECT (nvenc, "  returning caps %" GST_PTR_FORMAT, caps);
-
-  return caps;
 }
 
 static gboolean

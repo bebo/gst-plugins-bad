@@ -23,6 +23,8 @@
 #include "gstnvenc.h"
 
 #include <gst/video/gstvideoencoder.h>
+#include <gst/cuda/gstcuda.h>
+#include <gst/cuda/gstcuda_private.h>
 
 #define GST_TYPE_NV_BASE_ENC \
   (gst_nv_base_enc_get_type())
@@ -57,11 +59,18 @@ typedef enum {
   GST_NV_RC_MODE_VBR_MINQP,
 } GstNvRCMode;
 
+typedef enum
+{
+  GST_NVENC_INPUT_GL,
+  GST_NVENC_INPUT_CUDA,
+  GST_NVENC_INPUT_HOST,
+} GstNvEncInputType;
+
 typedef struct {
   GstVideoEncoder video_encoder;
 
   /* properties */
-  guint           cuda_device_id;
+  gint            cuda_device_id;
   GstNvPreset     preset_enum;
   GUID            selected_preset;
   GstNvRCMode     rate_control_mode;
@@ -70,28 +79,30 @@ typedef struct {
   gint            qp_const;
   guint           bitrate;
   gint            gop_size;
+  guint           rc_lookahead;
+  gboolean        no_scenecut;
+  gboolean        b_adapt;
+  guint           bframes;
 
-  CUcontext       cuda_ctx;
-  void          * encoder;
+  GstCudaContext * cuda_ctx;
+  gpointer        encoder;
 
   /* the supported input formats */
   GValue        * input_formats;                  /* OBJECT LOCK */
 
   GstVideoCodecState *input_state;
   volatile gint       reconfig;                   /* ATOMIC */
-  gboolean            gl_input;
+  GstNvEncInputType   input_type;
 
-  /* allocated buffers */
-  gpointer          *input_bufs;   /* array of n_allocs input buffers  */
-  NV_ENC_OUTPUT_PTR *output_bufs;  /* array of n_allocs output buffers */
-  guint              n_bufs;
+  /* (NvBaseEncFrameState) allocated input/output buffers,
+   * hold ref of NvBaseEncFrameState */
+  GArray         *items;
 
-  /* input and output buffers currently available */
-  GAsyncQueue    *in_bufs_pool;
-  GAsyncQueue    *bitstream_pool;
+  /* (NvBaseEncFrameState) currently available items */
+  GAsyncQueue    *internal_pool;
 
-  /* output bufs in use (input bufs in use are tracked via the codec frames) */
-  GAsyncQueue    *bitstream_queue;
+  /* (NvBaseEncFrameState) currently processing itmes */
+  GAsyncQueue    *processing_queue;
 
   /* we spawn a thread that does the (blocking) waits for output buffers
    * to become available, so we can continue to feed data to the encoder
@@ -102,8 +113,8 @@ typedef struct {
    * 0 = none, 1 = fields, 2 = interleaved */
   gint            interlace_modes;
 
-  void           *display;            /* GstGLDisplay */
-  void           *other_context;      /* GstGLContext */
+  gpointer        display;            /* GstGLDisplay */
+  gpointer        other_context;      /* GstGLContext */
 
   /* the maximum buffer size the encoder is configured for */
   guint               max_encode_width;

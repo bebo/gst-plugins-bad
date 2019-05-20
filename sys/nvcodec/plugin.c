@@ -29,15 +29,48 @@
 #include "config.h"
 #endif
 
+#include <gst/gst.h>
+#include <gst/cuda/gstcuda.h>
+#include <gst/cuda/gstcuda_private.h>
+
+#ifdef HAVE_NVDEC
 #include "gstnvdec.h"
+#endif
+
+#ifdef HAVE_NVENC
+#include "gstnvenc.h"
+#endif
+
+#include "gstcudaupload.h"
+#include "gstcudadownload.h"
 
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  return gst_element_register (plugin, "nvdec", GST_RANK_PRIMARY,
-      GST_TYPE_NVDEC);
+  gboolean ret = TRUE;
+
+  if (!gst_cuda_load_library ())
+    return FALSE;
+
+#ifdef HAVE_NVDEC
+  if (gst_cuvid_load_library ()) {
+    ret &= gst_element_register (plugin, "nvdec", GST_RANK_PRIMARY,
+        GST_TYPE_NVDEC);
+  }
+#endif
+
+#ifdef HAVE_NVENC
+  ret &= gst_nvenc_plugin_init (plugin);
+#endif
+
+  ret &= gst_element_register (plugin, "cudadownload", GST_RANK_NONE,
+      GST_TYPE_CUDA_DOWNLOAD);
+  ret &= gst_element_register (plugin, "cudaupload", GST_RANK_NONE,
+      GST_TYPE_CUDA_UPLOAD);
+
+  return ret;
 }
 
-GST_PLUGIN_DEFINE (GST_VERSION_MAJOR, GST_VERSION_MINOR, nvdec,
-    "GStreamer NVDEC plugin", plugin_init, VERSION, "BSD",
+GST_PLUGIN_DEFINE (GST_VERSION_MAJOR, GST_VERSION_MINOR, nvcodec,
+    "GStreamer NVCODEC plugin", plugin_init, VERSION, "LGPL",
     GST_PACKAGE_NAME, GST_PACKAGE_ORIGIN)

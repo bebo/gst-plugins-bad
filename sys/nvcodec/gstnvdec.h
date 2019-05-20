@@ -30,29 +30,12 @@
 
 #include <gst/gl/gl.h>
 #include <gst/gl/gstglfuncs.h>
-#include "nvcuvid.h"
+#include <gst/cuda/gstcuda.h>
+#include <gst/cuda/gstcuda_private.h>
+#include "gstcuvidloader.h"
 #include <cudaGL.h>
 
 G_BEGIN_DECLS
-
-typedef struct _GstNvDecCudaContext GstNvDecCudaContext;
-typedef struct _GstNvDecCudaContextClass GstNvDecCudaContextClass;
-
-struct _GstNvDecCudaContext
-{
-  GObject parent;
-
-  CUcontext context;
-  CUvideoctxlock lock;
-};
-
-struct _GstNvDecCudaContextClass
-{
-  GObjectClass parent_class;
-};
-
-GType gst_nvdec_cuda_context_get_type (void);
-
 
 #define GST_TYPE_NVDEC          (gst_nvdec_get_type())
 #define GST_NVDEC(obj)          (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_NVDEC, GstNvDec))
@@ -63,18 +46,32 @@ GType gst_nvdec_cuda_context_get_type (void);
 typedef struct _GstNvDec GstNvDec;
 typedef struct _GstNvDecClass GstNvDecClass;
 
+typedef enum
+{
+  GST_NVDEC_STATE_INIT = 0,
+  GST_NVDEC_STATE_PARSE,
+  GST_NVDEC_STATE_DECODE,
+} GstNvDecState;
+
+typedef enum
+{
+  GST_NVDEC_OUTPUT_GL,
+  GST_NVDEC_OUTPUT_CUDA,
+  GST_NVDEC_OUTPUT_HOST,
+} GstNvDecOutputType;
+
 struct _GstNvDec
 {
   GstVideoDecoder parent;
 
+  GstNvDecOutputType output_type;
   GstGLDisplay *gl_display;
   GstGLContext *gl_context;
   GstGLContext *other_gl_context;
 
-  GstNvDecCudaContext *cuda_context;
+  GstCudaContext *cuda_context;
   CUvideoparser parser;
   CUvideodecoder decoder;
-  GAsyncQueue *decode_queue;
 
   guint width;
   guint height;
@@ -82,6 +79,11 @@ struct _GstNvDec
   guint fps_d;
   GstClockTime min_latency;
   GstVideoCodecState *input_state;
+  GstNvDecState state;
+  GstFlowReturn last_ret;
+
+  /* properties */
+  gint cuda_device_id;
 };
 
 struct _GstNvDecClass

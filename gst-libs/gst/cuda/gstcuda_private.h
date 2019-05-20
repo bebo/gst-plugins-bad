@@ -1,5 +1,5 @@
-/* GStreamer NVENC plugin
- * Copyright (C) 2015 Centricular Ltd
+/* GStreamer
+ * Copyright (C) <2018> Seungha Yang <seungha.yang@navercorp.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -17,23 +17,13 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#ifndef __GST_NVENC_H_INCLUDED__
-#define __GST_NVENC_H_INCLUDED__
+#ifndef __GST_CUDA_PRIVATE_H__
+#define __GST_CUDA_PRIVATE_H__
 
-#include <gst/gst.h>
-#include <gst/video/video.h>
+/* This header shouldn't be installed, Used by -bad plugins internally */
 
-#include "nvEncodeAPI.h"
-#include <cuda.h>
+#define __GST_CUDA_PRIVATE_INSIDE_H__
+#include <gst/cuda/gstcudaloader.h>
+#undef __GST_CUDA_PRIVATE_INSIDE_H__
 
-GST_DEBUG_CATEGORY_EXTERN (gst_nvenc_debug);
-
-CUcontext               gst_nvenc_create_cuda_context (guint device_id);
-
-gboolean                gst_nvenc_destroy_cuda_context (CUcontext ctx);
-
-gboolean                gst_nvenc_cmp_guid (GUID g1, GUID g2);
-
-NV_ENC_BUFFER_FORMAT    gst_nvenc_get_nv_buffer_format (GstVideoFormat fmt);
-
-#endif /* __GST_NVENC_H_INCLUDED__ */
+#endif /* __GST_CUDA_PRIVATE_H__ */
